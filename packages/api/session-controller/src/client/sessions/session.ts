@@ -49,17 +49,21 @@ function projectionsBaseline(value: SessionProjectionBaseline): ProjectionsBasel
   }
 }
 
-/** Minimum message count for ordinary history windows. */
-export const PAGE_MESSAGES = 50
+/**
+ * Messages requested per history page. Sized so all but the longest sessions
+ * open complete in one page: paging exists for the long minority, and a page
+ * that ends mid-history leaves the straddling Turn without its start.
+ */
+export const PAGE_MESSAGES = 500
 
-const HISTORY_PAGE_OPTIONS = { maxMessages: 500, turnWindow: { minMessages: PAGE_MESSAGES, minTurns: 2 } }
+const HISTORY_PAGE_OPTIONS = { maxMessages: PAGE_MESSAGES, turnWindow: { minMessages: PAGE_MESSAGES, minTurns: 2 } }
 
-/** Minimum messages per page while a turn jump loops backwards. */
-export const JUMP_PAGE_MESSAGES = 200
+/** Messages requested per page while a turn jump loops backwards. */
+export const JUMP_PAGE_MESSAGES = 1000
 
 const JUMP_PAGE_OPTIONS = {
-  ...HISTORY_PAGE_OPTIONS,
-  turnWindow: { ...HISTORY_PAGE_OPTIONS.turnWindow, minMessages: JUMP_PAGE_MESSAGES },
+  maxMessages: JUMP_PAGE_MESSAGES,
+  turnWindow: { minMessages: JUMP_PAGE_MESSAGES, minTurns: 2 },
 }
 
 interface PendingHistory {
