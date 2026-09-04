@@ -96,6 +96,26 @@ describe('chat flow font-size axis', () => {
     ]))
   })
 
+  it('the Think header captions its narration at 20px + 2px instead of the flow rhythm', () => {
+    // Think is the caption of the prose under it, so the pair costs 43px where
+    // the shared 24px chrome plus the 8px block gap would cost 53px. The
+    // collapsed contain-size height must equal the row height, or the
+    // contained box clips (too small) or pads (too large) the title line.
+    const height = 'height: calc(20px + var(--dsh-content-font-delta, 0px))'
+    const css = read('ReasoningRow.module.css')
+    expect(declarationsFrom(css, '.root:not([data-expanded])')).toEqual(expect.arrayContaining([
+      'contain: size layout',
+      height,
+    ]))
+    expect(declarationsFrom(css, '.root .row')).toEqual([height])
+    expect(declarationsFrom(css, '.root .title'))
+      .toEqual(['line-height: calc(20px + var(--dsh-content-font-delta, 0px))'])
+    // Only the block after a VISIBLE reasoning row tightens: the folded case
+    // keeps its own margin rule, which cancels a full gap instead.
+    expect(declarationsFrom(read('AssistantMarkdown.module.css'), '.body > .reasoning:not([hidden]) + *'))
+      .toEqual(['margin-top: -6px'])
+  })
+
   it('the usage pill sizes its glyph and hit height like the sibling action buttons', () => {
     // The pill sits in the icon row right of the branch action; its data glyph
     // and 28px hit height follow the same delta rule as `.action` so the row
