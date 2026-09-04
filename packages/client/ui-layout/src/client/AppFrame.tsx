@@ -19,7 +19,7 @@ import type { ReactNode } from 'react'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import { CENTER_MIN, clampWidth, computeColumns, RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_MAX_RATIO, RIGHTBAR_MIN, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT } from './columns.ts'
+import { CENTER_MIN, clampWidth, computeColumns, MOBILE_DRAWER, MOBILE_MAX, RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_MAX_RATIO, RIGHTBAR_MIN, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT } from './columns.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
@@ -129,6 +129,10 @@ export function AppFrame({
   const layoutInfo = useStore(state => state.layoutInfo)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const viewport = layoutInfo.viewportWidth
+  // Every navigable session, not just the one the right column tracks: the
+  // mobile drawer must also close when the user picks a blank session.
+  const currentSessionId = useSessions(state =>
+    Object.values(state.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id)
 
   // Track the frame's own box (not the window): rAF-throttled ResizeObserver.
   useLayoutEffect(() => {
@@ -163,6 +167,19 @@ export function AppFrame({
     ? 0
     : layoutInfo.sidebar === 0 ? SIDEBAR_DEFAULT : layoutInfo.sidebar
   const rightbarPreference = layoutInfo.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO
+  // Mobile regime: the sidebar leaves the grid and rides above the
+  // conversation as an overlay drawer (same narrowExpanded toggle), the
+  // right column stays closed, and the center column owns the full width.
+  const mobile = viewport <= MOBILE_MAX
+  const drawerOpen = mobile && layoutInfo.narrowExpanded
+  const drawerWidth = Math.min(MOBILE_DRAWER, Math.max(0, viewport - 56))
+  // The drawer covers the conversation, so navigating to a session inside it
+  // must reveal that session: close on every actual session change.
+  const lastDrawerSession = useRef(currentSessionId)
+  useEffect(() => {
+    if (lastDrawerSession.current !== currentSessionId && drawerOpen) actions.toggleSidebar()
+    lastDrawerSession.current = currentSessionId
+  }, [actions, currentSessionId, drawerOpen])
   // Desktop reopen controls occupy the frame's shell.leading seat (macOS) or
   // the Windows caption row; neither platform keeps an icon rail.
   const darwin = document.documentElement.dataset.platform === 'darwin'
@@ -170,8 +187,13 @@ export function AppFrame({
     || document.documentElement.hasAttribute('data-windows-titlebar') ? 0 : SIDEBAR_COLLAPSED
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
-  const normal = computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth)
-  const cols = computeColumns(viewport, sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, collapsedWidth)
+  const closed = { sidebar: 0, center: viewport, rightbar: 0 }
+  const normal = mobile
+    ? closed
+    : computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth)
+  const cols = mobile
+    ? closed
+    : computeColumns(viewport, sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, collapsedWidth)
   const colsRef = useRef(cols)
   colsRef.current = cols
   const rightbarWidth = useRef(normal.rightbar)
@@ -240,9 +262,9 @@ export function AppFrame({
   // the discrete decisions (track present, collapse state) and the drag base.
   const rightbarMax = cols.rightbar === 0 ? 0 : clampWidth(rightbarPreference, RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO)
   const sidebar = useMemo(() => renderSlot('sidebar', {
-    collapsed: sidebarCollapsed,
-    width: cols.sidebar,
-  }), [renderSlot, sidebarCollapsed, cols.sidebar])
+    collapsed: mobile ? false : sidebarCollapsed,
+    width: mobile ? drawerWidth : cols.sidebar,
+  }), [renderSlot, mobile, sidebarCollapsed, drawerWidth, cols.sidebar])
   const main = useMemo(() => (
     <MainPanel usePanelInfo={usePanelInfo} renderSlot={renderSlot} />
   ), [usePanelInfo, renderSlot])
@@ -261,9 +283,13 @@ export function AppFrame({
       className={css.frame}
       style={{
         ...(document.documentElement.hasAttribute('data-windows-titlebar')
-          ? { '--dsh-windows-sidebar-width': `${cols.sidebar}px` } : {}),
-        gridTemplateColumns:
-          `${cols.sidebar}px minmax(${cols.rightbar === 0 ? 0 : CENTER_MIN}px, 1fr) minmax(0px, ${rightbarMax}px)`,
+          ? { '--dsh-windows-sidebar-width': `${mobile ? drawerWidth : cols.sidebar}px` } : {}),
+        // The mobile drawer leaves the grid (absolute), so the frame drops to
+        // the two tracks that remain in flow: center takes the width and the
+        // right column closes.
+        gridTemplateColumns: mobile
+          ? 'minmax(0, 1fr) 0px'
+          : `${cols.sidebar}px minmax(${cols.rightbar === 0 ? 0 : CENTER_MIN}px, 1fr) minmax(0px, ${rightbarMax}px)`,
       }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-rightbar-collapsed={cols.rightbar === 0 || undefined}
@@ -271,13 +297,15 @@ export function AppFrame({
       data-rightbar-instant={layoutInfo.rightbarInstant || undefined}
       data-dragging={dragging || undefined}
       data-animating={animating > 0 || undefined}
+      data-mobile={mobile || undefined}
+      data-drawer-open={drawerOpen || undefined}
     >
       <DocumentTitle
         productTitle={productTitle}
         useSessions={useSessions}
         usePanelInfo={usePanelInfo}
       />
-      <div className={css.sidebarCol}>
+      <div className={css.sidebarCol} style={mobile ? { width: drawerWidth } : undefined}>
         {sidebar}
       </div>
       <>
@@ -297,9 +325,30 @@ export function AppFrame({
           {leading}
         </div>
       )}
-      {/* The collapsed rail is fixed-width: no resize handle while closed. */}
-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-      {layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && (
+      {/* Mobile chrome: the drawer trigger is the only way back to a sidebar
+          that has left the frame, and the scrim dismisses it. */}
+      {mobile && (
+        <button
+          type="button"
+          className={css.drawerTrigger}
+          aria-label={t('nav.sessions')}
+          aria-expanded={drawerOpen}
+          onClick={() => { actions.toggleSidebar() }}
+        >
+          {t('nav.sessions')}
+        </button>
+      )}
+      {drawerOpen && (
+        <div
+          className={css.scrim}
+          role="presentation"
+          onClick={() => { actions.toggleSidebar() }}
+        />
+      )}
+      {/* The collapsed rail is fixed-width: no resize handle while closed, and
+          the mobile regime has no draggable column edges at all. */}
+      {!mobile && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+      {!mobile && layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && (
         <DragHandle side="rightbar" left={viewport - normal.rightbar} onStart={onRightbarStart} onDrag={onRightbarDrag} onEnd={onDragEnd} />
       )}
     </div>
