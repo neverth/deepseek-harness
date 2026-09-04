@@ -105,6 +105,8 @@ export interface TurnProcessChatData {
   readonly answerAnchorSeq: number | null
   readonly answerStep: number | null
   readonly inlineReasoning: boolean
+  /** Whether this Turn's own `turn/start` is in the loaded window. */
+  readonly startLoaded: boolean
   readonly messageCount: number
   readonly toolCallCount: number
   readonly subagentCount: number

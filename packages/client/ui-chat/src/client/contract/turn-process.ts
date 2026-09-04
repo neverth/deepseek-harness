@@ -9,6 +9,17 @@ export interface TurnProcessSpec {
   readonly answerAnchorSeq: number | null
   readonly answerStep: number | null
   readonly inlineReasoning: boolean
+  /**
+   * Whether this Turn's own `turn/start` is in the loaded window, making
+   * `processStartSeq` the Turn's real first event rather than the fallback
+   * derived from the earliest evidence that happened to load. The event window
+   * is a contiguous suffix, so a present start also means every later event of
+   * this Turn is loaded and the counts below are final. Folding reads this
+   * instead of whether the whole session is loaded: process disclosure is a
+   * per-Turn range, and a session with older pages outstanding still holds
+   * complete later Turns.
+   */
+  readonly startLoaded: boolean
   /** Reply-bearing durable Assistant messages before the final answer. */
   readonly messageCount: number
   /** Durable non-subagent Tool calls recorded by this Turn. */
@@ -45,6 +56,7 @@ export function sameTurnProcessSpec(left: TurnProcessSpec, right: TurnProcessSpe
     && left.answerAnchorSeq === right.answerAnchorSeq
     && left.answerStep === right.answerStep
     && left.inlineReasoning === right.inlineReasoning
+    && left.startLoaded === right.startLoaded
     && left.messageCount === right.messageCount
     && left.toolCallCount === right.toolCallCount
     && left.subagentCount === right.subagentCount

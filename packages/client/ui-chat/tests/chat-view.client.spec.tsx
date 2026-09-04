@@ -98,16 +98,24 @@ function makeSessionSource(init: Partial<SessionSnapshot> = {}) {
 
 type ChatSlice = Partial<LegacyConversationSlice> & {
   readonly turnUsages?: NonNullable<Parameters<typeof chatSnapshotFixture>[0]>['turnUsages']
+  readonly turnStartsMissing?: ReadonlySet<number> | undefined
 }
 type HarnessUpdate = ChatSlice & Partial<SessionSnapshot> & { readonly chat?: ChatSnapshot }
 
 /** Scripted Chat target source, independent from Session lifecycle state. */
 function makeChatSource(init: ChatSlice = {}, snapshot?: ChatSnapshot) {
   let snap = snapshot ?? chatSnapshotFixture(init)
+  // `legacy` carries no turn-start coverage, so a later set() would silently
+  // restore every start; keep the current value unless the update names one.
+  let startsMissing = init.turnStartsMissing
   const subs = new Set<() => void>()
   return {
     set: (next: ChatSlice) => {
-      snap = chatSnapshotFixture({ ...snap.legacy, ...next }, snap)
+      startsMissing = next.turnStartsMissing ?? startsMissing
+      snap = chatSnapshotFixture(
+        { ...snap.legacy, ...next, ...(startsMissing === undefined ? {} : { turnStartsMissing: startsMissing }) },
+        snap,
+      )
       for (const fn of [...subs]) fn()
     },
     replace: (next: ChatSnapshot) => {
@@ -227,6 +235,7 @@ function makeHarness(
 ) {
   const {
     chat: initialChat, nodes, partial, runningCalls, turnTimings, turnEnds, turnUsages,
+    turnStartsMissing,
     ...sessionInit
   } = init
   const chatSlice: ChatSlice = {
@@ -236,6 +245,7 @@ function makeHarness(
     ...(turnTimings === undefined ? {} : { turnTimings }),
     ...(turnEnds === undefined ? {} : { turnEnds }),
     ...(turnUsages === undefined ? {} : { turnUsages }),
+    ...(turnStartsMissing === undefined ? {} : { turnStartsMissing }),
   }
   const session = makeSessionSource({ ...sessionInit, ...sessionOverrides })
   const chatSource = makeChatSource(chatSlice, initialChat ?? chatSnapshot)
@@ -406,17 +416,19 @@ function makeHarness(
   const set = (next: HarnessUpdate): void => {
     const {
       chat: explicitChat, nodes, partial, runningCalls, turnTimings, turnEnds,
+      turnStartsMissing,
       ...sessionUpdate
     } = next
     if (explicitChat !== undefined) chatSource.replace(explicitChat)
     else if (nodes !== undefined || partial !== undefined || runningCalls !== undefined
-      || turnTimings !== undefined || turnEnds !== undefined) {
+      || turnTimings !== undefined || turnEnds !== undefined || turnStartsMissing !== undefined) {
       chatSource.set({
         ...(nodes === undefined ? {} : { nodes }),
         ...(partial === undefined ? {} : { partial }),
         ...(runningCalls === undefined ? {} : { runningCalls }),
         ...(turnTimings === undefined ? {} : { turnTimings }),
         ...(turnEnds === undefined ? {} : { turnEnds }),
+        ...(turnStartsMissing === undefined ? {} : { turnStartsMissing }),
       })
     }
     session.set(sessionUpdate)
@@ -1662,28 +1674,39 @@ describe('ChatView', () => {
     expect(contextRow?.getAttribute('hidden')).toBe('until-found')
   })
 
-  it('keeps a foldable closed Turn fully visible while history is partial', () => {
+  it('keeps a Turn missing its start fully visible and folds its loaded neighbour', () => {
+    // Load earlier is present, so Turn 1 straddles the oldest page: its
+    // `turn/start` never arrived, `processStartSeq` is a fallback, and its
+    // evidence stays visible. Turn 2 loaded whole in the same window and
+    // folds, which is what the global history gate used to prevent.
     const h = makeHarness({
       nodes: [
-        user(1, 'question'),
+        user(1, 'straddling question'),
         context(2, 'runtime policy', 1),
         assistant(3, 'working', 1, 1),
         assistant(4, 'final answer', 1, 2),
+        user(6, 'complete question'),
+        context(7, 'runtime policy', 2),
+        assistant(8, 'working', 2, 1),
+        assistant(9, 'final answer', 2, 2),
       ],
-      turnEnds: new Map([[1, 5]]),
+      turnEnds: new Map([[1, 5], [2, 10]]),
+      turnStartsMissing: new Set([1]),
       hasMore: true,
     })
     const view = render(<h.ChatView {...h.props} />)
-    const contextRow = view.container.querySelector<HTMLElement>('[data-chat-flow-kind="context"]')
+    const rows = view.container.querySelectorAll<HTMLElement>('[data-chat-flow-kind="context"]')
+    const straddling = rows[0]
+    const complete = rows[1]
 
-    expect(turnProcessControl(view.container)).toBeNull()
-    expect(contextRow?.getAttribute('hidden')).toBeNull()
-    expect(contextRow?.hasAttribute('data-turn-process-member')).toBe(false)
+    expect(straddling?.getAttribute('hidden')).toBeNull()
+    expect(straddling?.hasAttribute('data-turn-process-member')).toBe(false)
+    expect(complete?.getAttribute('hidden')).toBe('until-found')
 
-    act(() => { h.set({ hasMore: false }) })
-    const toggle = turnProcessControl(view.container)!
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    expect(contextRow?.getAttribute('hidden')).toBe('until-found')
+    // The straddling Turn's start arriving is what makes it foldable, not the
+    // session becoming complete.
+    act(() => { h.set({ turnStartsMissing: new Set<number>() }) })
+    expect(straddling?.getAttribute('hidden')).toBe('until-found')
   })
 
   it('withholds process controls for partial history and folds final-page groups', () => {

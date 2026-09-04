@@ -49,11 +49,16 @@ function projectionsBaseline(value: SessionProjectionBaseline): ProjectionsBasel
   }
 }
 
-/** Messages requested per history page. */
-export const PAGE_MESSAGES = 50
+/**
+ * Messages requested per history page. Sized so all but the longest sessions
+ * open complete in one page: paging exists for the long minority, and a page
+ * that ends mid-history suppresses per-Turn process folding for the Turn whose
+ * start has not arrived yet.
+ */
+export const PAGE_MESSAGES = 500
 
 /** Messages requested per page while a turn jump loops backwards (fewer, larger round trips). */
-export const JUMP_PAGE_MESSAGES = 200
+export const JUMP_PAGE_MESSAGES = 1000
 
 /** Manager-owned observers of a Session object's local state edges. */
 export interface SessionOptions {

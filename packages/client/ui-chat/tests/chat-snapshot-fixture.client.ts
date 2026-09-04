@@ -268,6 +268,18 @@ function settledNode(
   }
 }
 
+/** Fixture-only Turn-start coverage per built snapshot, keyed off the snapshot. */
+const startCoverage = new WeakMap<ChatSnapshot, ReadonlySet<number>>()
+
+/** Compare two Turn-start coverage sets by membership. */
+function sameStartCoverage(
+  left: ReadonlySet<number> | undefined,
+  right: ReadonlySet<number>,
+): boolean {
+  if (left === undefined) return right.size === 0
+  return left.size === right.size && [...right].every(turn => left.has(turn))
+}
+
 /** Build the canonical Chat fixture corresponding to one legacy test slice. */
 export function chatSnapshotFixture(input: {
   readonly nodes?: readonly ConversationNode[]
@@ -277,7 +289,14 @@ export function chatSnapshotFixture(input: {
   readonly turnEnds?: LegacyConversationSlice['turnEnds']
   /** Per-turn usage buckets; production derives these from session events. */
   readonly turnUsages?: ReadonlyMap<number, TurnTokenUsage> | undefined
+  /**
+   * Turns whose `turn/start` is outside the loaded window — the Turn
+   * straddling the oldest page while Load earlier remains. Every other Turn
+   * gets a start, as production always records one.
+   */
+  readonly turnStartsMissing?: ReadonlySet<number> | undefined
 } = {}, previous?: ChatSnapshot): ChatSnapshot {
+  const turnStartsMissing = input.turnStartsMissing ?? new Set<number>()
   const legacy: LegacyConversationSlice = {
     nodes: input.nodes ?? EMPTY,
     partial: input.partial ?? null,
@@ -299,11 +318,27 @@ export function chatSnapshotFixture(input: {
     const previousData = previous?.timeline.turns.get(turn)?.data
     const data = previousData instanceof FixtureTurnDataStore ? previousData : new FixtureTurnDataStore()
     turnData.set(turn, data)
+    // Every real Turn opens with `turn/start`; only a Turn straddling the
+    // oldest loaded page lacks one, which `turnStartsMissing` models.
+    // `turnTimings` supplies the clock, so a Turn without timings carries a
+    // start whose time stays undefined rather than anchoring the running clock
+    // at the epoch. Locations compare `start` by identity, so an unchanged
+    // start keeps the previous object and preserves the memo boundary.
+    const previousStart = previous?.timeline.turns.get(turn)?.start
+    const nextStart = turnStartsMissing.has(turn) ? undefined : {
+      type: 'turn/start',
+      seq: Math.max(0, (endSeq ?? 1) - 1),
+      ...(timing === undefined ? {} : { time: timing.startTime }),
+      turn,
+    }
+    const start = previousStart !== undefined && nextStart !== undefined
+      && previousStart.seq === nextStart.seq
+      && previousStart.time === nextStart.time
+      ? previousStart
+      : nextStart
     turns.set(turn, {
       turn,
-      start: timing === undefined ? undefined : {
-        type: 'turn/start', seq: Math.max(0, (endSeq ?? 1) - 1), time: timing.startTime, turn,
-      } as never,
+      start: start as never,
       end: timing?.endTime === undefined || endSeq === undefined ? undefined : {
         type: 'turn/end', seq: endSeq, time: timing.endTime, turn, reason: 'completed',
       } as never,
@@ -413,6 +448,7 @@ export function chatSnapshotFixture(input: {
       answerAnchorSeq: answer?.finalNode.seq ?? null,
       answerStep: answer?.step ?? null,
       inlineReasoning: answer !== undefined && inlineReasoning,
+      startLoaded: turns.get(turnNumber)?.start !== undefined,
       messageCount: answer === undefined
         ? assistants.filter(candidate => hasAssistantReplyContent(candidate.blocks)).length
         : assistants.filter(candidate => candidate.step < answer.step
@@ -507,9 +543,13 @@ export function chatSnapshotFixture(input: {
     : new FixtureLocationIndex()
   locations.replace(byTurn)
   store.replaceProcesses(order, locations)
+  // Turn-start coverage also shapes the timeline, so a change to it must
+  // rebuild even when the timing and end maps are reused by identity. It is
+  // fixture-only input, so it rides a side table instead of ChatSnapshot.
   const timeline = previous !== undefined
     && previous.legacy.turnTimings === legacy.turnTimings
     && previous.legacy.turnEnds === legacy.turnEnds
+    && sameStartCoverage(startCoverage.get(previous), turnStartsMissing)
     ? previous.timeline
     : { turnOrder: [...turns.keys()], turns }
   const derived = timeline.turnOrder
@@ -522,7 +562,7 @@ export function chatSnapshotFixture(input: {
     : derived
   for (const data of turnData.values()) data.publish()
   store.publish()
-  return {
+  const snapshot: ChatSnapshot = {
     order,
     nodes: store,
     locations,
@@ -530,4 +570,6 @@ export function chatSnapshotFixture(input: {
     timeline,
     legacy,
   }
+  startCoverage.set(snapshot, turnStartsMissing)
+  return snapshot
 }

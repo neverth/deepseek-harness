@@ -12,7 +12,6 @@ interface ChatNodeSeatProps extends ChatNodeOwnerProps {
   readonly nodeKey: string
   readonly useChatNode: ChatViewSlotProps['useChatNode']
   readonly useChatNodeProcess: ChatViewSlotProps['useChatNodeProcess']
-  readonly historyIncomplete: boolean
   readonly compactTranscript: boolean
   readonly useStore: ChatViewSlotProps['useStore']
   readonly actions: ChatViewSlotProps['actions']
@@ -36,7 +35,7 @@ function turnOf(node: ChatNode | undefined): number | undefined {
 
 /** Subscribe, apply Turn-process visibility, and dispatch one stable Context key. */
 export const ChatNodeSeat = memo(function ChatNodeSeat({
-  nodeKey, useChatNode, useChatNodeProcess, historyIncomplete, compactTranscript,
+  nodeKey, useChatNode, useChatNodeProcess, compactTranscript,
   selectedCallId, cwd, openFile, inspectCall, forkAt,
   loadImage, renderMessageImages, fileMentions, useStore, actions, renderSlot, t,
 }: ChatNodeSeatProps) {
@@ -59,13 +58,19 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
       actions.setTurnProcessOpen(processSpec.turn, processSpec.answerStep, open)
     }
   }, [actions, processSpec])
+  // Folding is a per-Turn range, so its precondition is this Turn's own
+  // completeness, not the session's. `startLoaded` means `turn/start` is in
+  // the contiguous window, so `processStartSeq` is the real first event and
+  // every later event of the Turn is loaded; a Turn still missing its start
+  // (the one straddling the oldest loaded page) keeps all evidence visible
+  // while Load earlier remains.
   const processWindowReady = processSpec !== undefined
     && processPresentation !== undefined
     && compactTranscript
     && processSpec.answerAnchorSeq !== null
     && processPresentation.turn === processSpec.turn
     && processPresentation.turnClosed
-    && !historyIncomplete
+    && processSpec.startLoaded
   const processMember = routedNode !== undefined
     && processWindowReady
     && !TURN_PROCESS_INDEPENDENT_KINDS.has(routedNode.kind)
