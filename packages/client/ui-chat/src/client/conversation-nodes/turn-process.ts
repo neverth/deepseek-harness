@@ -142,6 +142,7 @@ function processSpec(state: TurnProcessState, turn: TurnLocation): TurnProcessSp
       answerAnchorSeq: null,
       answerStep: null,
       inlineReasoning: false,
+      startLoaded: turn.start !== undefined,
       ...counts,
     }
   }
@@ -163,6 +164,7 @@ function processSpec(state: TurnProcessState, turn: TurnLocation): TurnProcessSp
     answerAnchorSeq: answer.finalNode.seq,
     answerStep: answer.step,
     inlineReasoning,
+    startLoaded: turn.start !== undefined,
     ...counts,
   }
 }
