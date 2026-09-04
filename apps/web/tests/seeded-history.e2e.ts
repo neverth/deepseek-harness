@@ -352,14 +352,14 @@ describe('web e2e: seeded history renders through cold resume', () => {
     await sessionRow.click()
     // Settled barrier for history: the recorded final assistant text renders.
     await expect.poll(() => page.getByText('DONE', { exact: true }).count(), { timeout: 15_000 }).toBe(1)
-    expect(openingWindow).toMatchObject({ maxMessages: 500, turnWindow: { minMessages: 50, minTurns: 2 } })
+    expect(openingWindow).toMatchObject({ maxMessages: 500, turnWindow: { minMessages: 500, minTurns: 2 } })
     expect(await page.getByText(PROMPT, { exact: true }).count()).toBe(0)
     const [paging] = await Promise.all([
       page.waitForRequest('**/api/session/page'),
       page.getByRole('button', { name: 'Load earlier', exact: true }).click(),
     ])
     expect(paging.postDataJSON()).toMatchObject({
-      payload: { args: { request: { maxMessages: 500, turnWindow: { minMessages: 50, minTurns: 2 } } } },
+      payload: { args: { request: { maxMessages: 500, turnWindow: { minMessages: 500, minTurns: 2 } } } },
     })
     await expect.poll(() => page.getByText(PROMPT, { exact: true }).count(), { timeout: 10_000 }).toBe(1)
     await expect.poll(() => page.getByText('compact', { exact: true }).count(), { timeout: 10_000 }).toBe(1)
