@@ -29,6 +29,8 @@ export const zh = {
   'expand': '展开',
   'back': '返回',
   'brand.localBuild': 'DSH 本地构建',
+  'nav.sessions': '任务',
+  'nav.input': '输入',
   'unknown': '未知',
   'none': '无',
   'truncated': '已截断',

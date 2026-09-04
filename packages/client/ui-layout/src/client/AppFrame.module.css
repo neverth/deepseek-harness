@@ -117,3 +117,59 @@
 .overlayLayer > * {
   pointer-events: auto;
 }
+
+/* ---- Mobile regime (viewport <= MOBILE_MAX) ----
+   The sidebar leaves the grid: the frame keeps its three tracks (sidebar and
+   details resolve to 0), and the column becomes a fixed overlay drawer that
+   slides in over the conversation. */
+
+.frame[data-mobile] .sidebarCol {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  border-right: 0.5px solid var(--dsw-alias-border-l3);
+  transform: translateX(-100%);
+  transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+.frame[data-mobile][data-drawer-open] .sidebarCol {
+  transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame[data-mobile] .sidebarCol {
+    transition: none;
+  }
+}
+
+/* Dismiss layer under the drawer, above every column. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  background: var(--dsw-alias-bg-mask-1);
+}
+
+/* The only affordance that reopens a sidebar that has left the frame: a
+   floating pill at the top-left, above the conversation chrome. */
+.drawerTrigger {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 22;
+  height: 36px;
+  padding: 0 16px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 18px;
+  background: var(--dsw-alias-button-floating-fill);
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.drawerTrigger:hover {
+  background: var(--dsw-alias-button-floating-hover);
+}

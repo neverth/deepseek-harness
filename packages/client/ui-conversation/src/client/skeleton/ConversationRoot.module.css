@@ -450,3 +450,91 @@
 .root[data-phase='settling'] .composerSeat {
   visibility: hidden;
 }
+
+/* ---- Mobile regime (column <= MOBILE_MAX) ----
+   The docked composer leaves the flow behind a floating trigger; the hero
+   composer stays inline (it is the only thing a blank session can act on). */
+
+/* Narrow columns give the shared width axis the whole column: the 680px floor
+   would otherwise overflow it. */
+.root[data-mobile] {
+  --dsh-chat-content-width: var(--dsh-conversation-column-width, 100%);
+  --dsh-composer-side-clearance: 8px;
+}
+
+/* Collapsed: the seat keeps its measurements (the ResizeObserver still runs)
+   but takes no space and no clicks. */
+.composerSeat[data-composer-collapsed] {
+  visibility: hidden;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Opened over the transcript: a bottom sheet the transcript scrolls under.
+   No scrim — the user keeps reading and scrolling the messages they are
+   replying to, and the same pill that opened the sheet closes it. */
+.root[data-mobile][data-phase='active'] .composerSeat:not([data-composer-collapsed]) {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 12;
+  padding-top: 8px;
+  background: var(--dsw-alias-bg-base);
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+/* The sheet floats over the scrollport, so the transcript reserves its height
+   (published by the seat's ResizeObserver) to keep the last message reachable
+   above it. */
+.root[data-mobile][data-phase='active'] .scrollBody:has(.composerSeat:not([data-composer-collapsed])) {
+  padding-bottom: var(--dsh-composer-height, 0px);
+}
+
+/* ONE floating pill owns both directions: bottom-right of the column, on the
+   send button's blue pair with a white label. Tapping it opens the composer;
+   tapping the same spot closes it. */
+.composerTrigger {
+  position: absolute;
+  right: 16px;
+  bottom: 20px;
+  z-index: 13; /* above the sheet (12): it rides on the sheet's top edge while open */
+  display: grid;
+  place-items: center;
+  height: 48px;
+  min-width: 48px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 24px;
+  background: var(--dsw-alias-button-info-fill);
+  /* Static white, matching the send circle: the label stays white on the blue
+     fill in both themes. */
+  color: #fff;
+  font-size: 15px;
+  line-height: 20px;
+  box-shadow: var(--dsw-elevation-soft);
+  cursor: pointer;
+  /* Travels with the sheet rather than jumping: the open state only changes
+     `bottom` and the horizontal padding. */
+  transition:
+    bottom var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    padding var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+.composerTrigger:hover {
+  background: var(--dsw-alias-button-info-hover);
+}
+
+/* Open: the same pill sits just above the sheet it opened, shrunk to its
+   chevron so it covers as little of the composer as possible. */
+.composerTrigger[data-composer-open] {
+  bottom: calc(var(--dsh-composer-height, 0px) + 12px);
+  padding: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composerTrigger {
+    transition: none;
+  }
+}

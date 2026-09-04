@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
+import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { ConversationSlotProps, InputZone } from '../contract/slots.ts'
 import { conversationPhase } from '../contract/snapshot.ts'
@@ -17,6 +18,9 @@ export type ConversationRootProps = ConversationSlotProps
 const WIDTH_PREF_KEY = 'dsh.conversation.contentWidth'
 /** Floor for a dragged content width; matches the layout center-column minimum. */
 const CONTENT_MIN = 640
+/** Column width at or below which the composer collapses to a floating trigger
+ * (mirrors the layout frame's mobile regime). */
+const MOBILE_MAX = 768
 /** Column budget the content must leave free: 88px per side keeps the width
  * handles fully placeable (24px inset + 40px strip + 24px safe zone) — a
  * larger dragged width would push its own handles off the column and leave no
@@ -152,6 +156,22 @@ export function ConversationRoot({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState<WorkspaceId | undefined>()
   const pickerAnchor = useRef<HTMLButtonElement>(null)
+  // Mobile regime: the composer leaves the flow and opens from a floating
+  // trigger, so a narrow column shows the transcript full-height.
+  const [mobile, setMobile] = useState(() => window.innerWidth <= MOBILE_MAX)
+  const [composerOpen, setComposerOpen] = useState(false)
+  // Escape is the second exit from the open sheet, beside its collapse button:
+  // the composer takes focus, so the keyboard needs a way back to the
+  // transcript. Bound on the document because focus sits in the editor, not on
+  // a React ancestor of this root.
+  useEffect(() => {
+    if (!composerOpen) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setComposerOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => { document.removeEventListener('keydown', onKeyDown) }
+  }, [composerOpen])
 
   // Publishes the two live measurements floating View chrome reads off the
   // scroll body: the seat's height as --dsh-composer-height, so controls clear
@@ -160,14 +180,21 @@ export function ConversationRoot({
   // seat leaves visible. Callback ref, not an effect; stable identity prevents
   // observer churn while the first blank session fills the resident body
   // outlet.
+  //
+  // The two land at different levels: viewport height is the scrollport's own
+  // fact, while composer height goes on the band that holds BOTH the
+  // scrollport and the mobile composer toggle — a sibling of the scroller
+  // cannot inherit a variable set on it. Scroller descendants still read the
+  // same value through inheritance.
   const seatObserver = useRef<ResizeObserver | null>(null)
   const seatResizeRef = useCallback((seat: HTMLDivElement | null): void => {
     seatObserver.current?.disconnect()
     seatObserver.current = null
     const scroller = seat?.parentElement ?? null
-    if (seat === null || scroller === null) return
+    const band = scroller?.parentElement ?? null
+    if (seat === null || scroller === null || band === null) return
     seatObserver.current = new ResizeObserver(() => {
-      scroller.style.setProperty('--dsh-composer-height', `${seat.offsetHeight}px`)
+      band.style.setProperty('--dsh-composer-height', `${seat.offsetHeight}px`)
       scroller.style.setProperty(
         '--dsh-conversation-viewport-height',
         `${scroller.clientHeight}px`,
@@ -187,6 +214,7 @@ export function ConversationRoot({
   const publishWidths = useCallback((root: HTMLDivElement): void => {
     const column = root.offsetWidth
     root.style.setProperty('--dsh-conversation-column-width', `${column}px`)
+    setMobile(column <= MOBILE_MAX)
     const preference = readWidthPreference()
     if (preference === null) {
       root.style.removeProperty('--dsh-chat-user-width')
@@ -353,6 +381,9 @@ export function ConversationRoot({
   )
 
   const phase = settling ? 'settling' : hero ? 'hero' : 'active'
+  // Mobile only collapses the docked composer: the hero IS the composer, and
+  // hiding it would leave the blank session with nothing to act on.
+  const collapsedComposer = mobile && phase === 'active' && !composerOpen
   const composer = renderSlotChain(
     'conversation.composer',
     { sessionId, session, pendingInteraction },
@@ -364,22 +395,50 @@ export function ConversationRoot({
   // on the fallback alone would leave a business-owned takeover at the content
   // end off-screen when the user is not pinned to the floor.
   const composerSeat = (
-    <div ref={seatResizeRef} className={css.composerSeat} data-composer-seat="">
+    <div
+      ref={seatResizeRef}
+      className={css.composerSeat}
+      data-composer-seat=""
+      {...collapsedComposer ? { 'data-composer-collapsed': '' } : {}}
+    >
       {composer}
     </div>
   )
 
   return (
-    <div ref={rootResizeRef} className={css.root} data-phase={phase}>
+    <div
+      ref={rootResizeRef}
+      className={css.root}
+      data-phase={phase}
+      data-mobile={mobile || undefined}
+    >
       {sessionId === undefined ? null : renderSlot('conversation.session.header', {})}
       <div className={css.body}>
         <div className={css.scrollBody} data-conversation-scroll="">
           {sessionId === undefined ? null : renderSlot('conversation.session', {})}
           {composerSeat}
         </div>
+        {/* Mobile: ONE floating pill toggles the composer in place — tap to
+            open, tap the same spot to close. No dismiss scrim: an invisible
+            tap-out is not a discoverable exit, and covering the transcript
+            would stop the user reading what they are replying to. While open
+            the pill rides above the sheet (--dsh-composer-height, published by
+            the seat observer onto this scroller). */}
+        {mobile && phase === 'active' && (
+          <button
+            type="button"
+            className={css.composerTrigger}
+            data-composer-open={composerOpen || undefined}
+            aria-expanded={composerOpen}
+            aria-label={composerOpen ? t('input.close') : t('input.open')}
+            onClick={() => { setComposerOpen(open => !open) }}
+          >
+            {composerOpen ? <IconChevronDownOutline14 size={18} /> : t('input.open')}
+          </button>
+        )}
         {/* Width handles only while a transcript is on screen; the hero has no
-            content column to size. */}
-        {phase === 'active' && (['left', 'right'] as const).map(side => (
+            content column to size, and a mobile column has no room for them. */}
+        {phase === 'active' && !mobile && (['left', 'right'] as const).map(side => (
           <WidthHandle
             key={side}
             side={side}
