@@ -2,10 +2,21 @@
    Modules. Cite pills, header anchors, and thinking-small variants are
    intentionally absent (no matching DOM). Token names match that sheet. */
 
+/* Compact chat rhythm. Block spacing runs through four local properties so
+   the vertical scale has one definition; line-height overrides the `font`
+   shorthand's document leading and tracks the font-size preference through
+   the same px delta. A consumer wanting the upstream document scale back
+   rebinds these on its own container. */
 .markdown {
+  --dsh-md-block-gap: 8px;
+  --dsh-md-heading-lead: 16px;
+  --dsh-md-heading-trail: 6px;
+  --dsh-md-tight-gap: 4px;
+
   min-width: 0;
   overflow-wrap: anywhere;
   font: var(--dsw-font-markdown-base);
+  line-height: calc(21px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-primary);
 }
 
@@ -15,27 +26,27 @@
 
 .markdown h1 {
   font: var(--dsw-font-markdown-h1);
-  margin: 32px 0 16px;
+  margin: var(--dsh-md-heading-lead) 0 var(--dsh-md-heading-trail);
 }
 
 .markdown h2 {
   font: var(--dsw-font-markdown-h2);
-  margin: 32px 0 16px;
+  margin: var(--dsh-md-heading-lead) 0 var(--dsh-md-heading-trail);
 }
 
 .markdown h3 {
   font: var(--dsw-font-markdown-h3);
-  margin: 32px 0 16px;
+  margin: var(--dsh-md-heading-lead) 0 var(--dsh-md-heading-trail);
 }
 
 .markdown h4 {
   font: var(--dsw-font-markdown-h4);
-  margin: 16px 0;
+  margin: var(--dsh-md-block-gap) 0 var(--dsh-md-heading-trail);
 }
 
 .markdown :where(h5, h6) {
   font: var(--dsw-font-markdown-base-strong);
-  margin: 16px 0;
+  margin: var(--dsh-md-block-gap) 0 var(--dsh-md-heading-trail);
 }
 
 .markdown :where(h1, h2, h3, h4, h5, h6) strong {
@@ -43,16 +54,17 @@
 }
 
 .markdown p {
-  margin: 16px 0;
+  margin: var(--dsh-md-block-gap) 0;
 }
 
-/* Tighten h4–h6 against a following list (design: 8px gap). */
-.markdown :where(h4, h5, h6) + :where(ul, ol) {
-  margin-top: 8px;
+/* Tighten a heading against a following list. Sibling margins collapse to the
+   larger of the pair, so the list's own top margin has to drop as well. */
+.markdown :where(h1, h2, h3, h4, h5, h6) + :where(ul, ol) {
+  margin-top: var(--dsh-md-tight-gap);
 }
 
-.markdown :where(h4, h5, h6):has(+ :where(ul, ol)) {
-  margin-bottom: 8px;
+.markdown :where(h1, h2, h3, h4, h5, h6):has(+ :where(ul, ol)) {
+  margin-bottom: var(--dsh-md-tight-gap);
 }
 
 .markdown a {
@@ -98,20 +110,21 @@
 }
 
 .markdown :where(ul, ol) {
-  margin: 16px 0;
+  margin: var(--dsh-md-block-gap) 0;
   padding-left: 18px;
 }
 
 .markdown li:not(:first-child) {
-  margin-top: 6px;
+  margin-top: 2px;
 }
 
 .markdown li > :where(ul, ol) {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .markdown li::marker {
-  line-height: 24px;
+  /* Match the body leading so the marker stays on the first line's baseline. */
+  line-height: inherit;
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -126,7 +139,7 @@
 }
 
 .markdown li > p {
-  margin: 8px 0;
+  margin: var(--dsh-md-tight-gap) 0;
 }
 
 .markdown li > *:first-child {
@@ -142,18 +155,18 @@
   display: block;
   border: none;
   height: 0.5px;
-  margin: 32px 0;
+  margin: var(--dsh-md-heading-lead) 0;
   background: var(--dsw-alias-border-l2);
 }
 
 .markdown blockquote {
   border-left: 2px solid var(--dsw-alias-label-caption);
-  margin: 16px 0 0;
+  margin: var(--dsh-md-block-gap) 0 0;
   padding-left: 14px;
 }
 
 .markdown pre {
-  margin: 16px 0;
+  margin: var(--dsh-md-block-gap) 0;
   font-family: var(--ds-font-family-code);
   overflow: auto;
 }
@@ -187,30 +200,25 @@
   accent-color: var(--dsw-alias-label-secondary);
 }
 
+/* Every table wrapper scrolls in one state, wide or not: the bar appears only
+   when the content actually overflows, and no hover or focus rule changes the
+   box. A hover-revealed bar was tried by swapping `overflow-x` (hidden plus a
+   resting `padding-bottom`, auto with the padding released on hover), because
+   Chromium never repaints state-conditioned scrollbar styles. `md-table-wide`
+   is a column-count hook (>= 4 columns), not an overflow measurement, and the
+   chat transcript widens those tables to the full transcript width, so the
+   common wide-hooked table does not overflow. For it the hover state removed
+   8px that no appearing bar replaced, and the block jumped under the pointer
+   and back on leave — measured at exactly -8px in Chromium.
+   `scrollbar-gutter: stable` does not rescue the swap: it reserves nothing
+   under `overflow-x: hidden` or `clip`, which moves the jump to the
+   overflowing case. Hover-only concealment was unreachable regardless — a
+   transparent-at-rest thumb repainted on hover gave a pixel-identical
+   screenshot, which is the same repaint limitation from the other side. */
 .tableScroll {
   max-width: 100%;
   overflow-x: auto;
   overscroll-behavior-x: contain;
-}
-
-/* Wide tables reveal their horizontal bar on hover (or keyboard focus)
-   instead of keeping it painted. Chromium never repaints state-conditioned
-   scrollbar STYLES (neither hover-conditioned `::-webkit-scrollbar*` rules
-   nor a :hover `scrollbar-color` change reaches the painted bar), so the
-   toggle is `overflow-x` itself — a layout change repaints reliably. The
-   resting padding matches the themed bar's height, so on an overflowing
-   table the appearing bar exactly replaces it and nothing below shifts.
-   Wheel and trackpad scrolling need the pointer over the table, which is
-   already the hover that re-enables `auto`. */
-.tableScroll:global(.md-table-wide) {
-  overflow-x: hidden;
-  padding-bottom: var(--dsh-scrollbar-width, 8px);
-}
-
-.tableScroll:global(.md-table-wide):hover,
-.tableScroll:global(.md-table-wide):focus-visible {
-  overflow-x: auto;
-  padding-bottom: 0;
 }
 
 /* Chromium keyboard-focuses scrollable containers by default; the ring uses

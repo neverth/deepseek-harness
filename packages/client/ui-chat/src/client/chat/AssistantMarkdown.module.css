@@ -1,23 +1,28 @@
-/* Assistant flow body: full-width narration (figma 16/28 scaled 0.875 → 14/24
-   with the markdown token ladder), block gap 16. The Settings font-size
-   preference rides the body-published axis: size follows
-   --dsh-content-font-size and the line height keeps the 10px leading via the
-   shared px delta. IconActions sit below the body with an explicit 16px top
-   margin (figma 43:32997) — separate from the body's internal gap so the
-   footer spacing stays fixed when the body is a single block. */
+/* Assistant flow body: full-width narration at the compact chat rhythm,
+   matched to the markdown sheet. The Settings font-size preference rides the
+   body-published axis: size follows --dsh-content-font-size and the line
+   height tracks it through the shared px delta. IconActions sit below the
+   body with an explicit 16px top margin (figma 43:32997) — separate from the
+   body's internal gap so the footer spacing stays fixed when the body is a
+   single block. */
 
 .root {
+  /* Gap between sibling Assistant blocks, matched to the markdown sheet's
+     inter-block rhythm so a two-block reply and a two-paragraph block read
+     as one column. The hidden-reasoning rule below cancels exactly one. */
+  --dsh-assistant-block-gap: 8px;
+
   display: flex;
   flex-direction: column;
   font-size: var(--dsh-content-font-size, 14px);
-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  line-height: calc(21px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-primary);
 }
 
 .body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--dsh-assistant-block-gap);
 }
 
 /* Wide markdown tables (the renderer's ≥4-column md-table-wide hook) span
@@ -44,9 +49,9 @@
 
 /* hidden="until-found" keeps a zero-height reasoning box in flex layout.
    Cancel the one gap that box would otherwise leave before the visible reply;
-   visible Assistant blocks retain the ordinary 16px rhythm. */
+   visible Assistant blocks retain the ordinary block rhythm. */
 .body > [data-turn-process-inline][hidden] {
-  margin-bottom: -16px;
+  margin-bottom: calc(-1 * var(--dsh-assistant-block-gap));
 }
 
 /* Interrupted-turn terminal marker: quiet inline tag, no animation. Fixed

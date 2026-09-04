@@ -421,10 +421,9 @@ function renderTable(node: Md.Table, key: Key, context: MarkdownRenderContext): 
   // column and wrap instead (deepsuite chat TableWrapper parity).
   const wide = columns >= 4 && context.inBlockquote !== true
   return (
-    // Wide tables rest with overflow-x hidden (the hover-revealed bar in
-    // MarkdownText.module.css), which drops Chromium's implicit scroller
-    // focusability — the explicit tabindex keeps them keyboard-reachable,
-    // and :focus-visible restores scrolling.
+    // Wide tables scroll at rest, so Chromium's implicit scroller focusability
+    // applies; the explicit tabindex keeps the keyboard entry point stated
+    // rather than inherited from that engine behavior.
     <div
       key={key}
       className={clsx(css.tableScroll, wide ? 'md-table-wide' : css.tableFill)}
