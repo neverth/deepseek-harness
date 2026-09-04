@@ -288,3 +288,100 @@
 .overlayLayer > * {
   pointer-events: auto;
 }
+
+/* ---- Mobile regime (viewport <= MOBILE_MAX) ----
+   The sidebar leaves the grid: the frame keeps its three tracks (sidebar and
+   details resolve to 0), and the column becomes a fixed overlay drawer that
+   slides in over the conversation. */
+
+/* The frame is glued to the visual viewport instead of filling the layout
+   viewport, because the soft keyboard shrinks only the former: AppFrame
+   publishes the two measurements and the frame follows both the shrink and the
+   pan. Everything inside then lays out inside the region the user can actually
+   see, so the composer's floor clears the keys as ordinary layout and no
+   descendant needs its own keyboard arithmetic.
+
+   `top`/`height`, never a transform: a transformed ancestor would become the
+   containing block for the position:fixed overlays inside (menus, modals,
+   lightboxes, the drawer itself), silently re-anchoring all of them. */
+.frame[data-mobile] {
+  position: fixed;
+  top: var(--dsh-visual-viewport-top, 0px);
+  left: 0;
+  width: 100%;
+  height: var(--dsh-visual-viewport-height, 100%);
+}
+
+.frame[data-mobile] .sidebarCol {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  border-right: 0.5px solid var(--dsw-alias-border-l3);
+  transform: translateX(-100%);
+  transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+.frame[data-mobile][data-drawer-open] .sidebarCol {
+  transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame[data-mobile] .sidebarCol {
+    transition: none;
+  }
+}
+
+/* Dismiss layer under the drawer, above every column. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  background: var(--dsw-alias-bg-mask-1);
+}
+
+/* Visible dismiss button riding the scrim edge: keeps the gesture where
+   the eye lands instead of an undiscoverable scrim click. */
+.drawerClose {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 50%;
+  background: var(--dsw-alias-button-floating-fill);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.drawerClose:hover {
+  background: var(--dsw-alias-button-floating-hover);
+}
+
+/* The only affordance that reopens a sidebar that has left the frame: a
+   floating pill at the top-left, above the conversation chrome. */
+.drawerTrigger {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 22;
+  height: 36px;
+  padding: 0 16px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 18px;
+  background: var(--dsw-alias-button-floating-fill);
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.drawerTrigger:hover {
+  background: var(--dsw-alias-button-floating-hover);
+}

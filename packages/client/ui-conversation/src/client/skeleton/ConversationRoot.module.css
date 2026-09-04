@@ -557,3 +557,150 @@ button.crumb:hover {
 .embeddedBody[data-content-phase='settling'] .composerSeat {
   visibility: hidden;
 }
+
+/* ---- Mobile regime (column <= MOBILE_MAX) ----
+   The docked composer leaves the flow behind a floating trigger; the hero
+   composer stays inline (it is the only thing a blank session can act on). */
+
+/* Narrow columns give the shared width axis the whole column: the 680px floor
+   would otherwise overflow it. */
+.root[data-mobile] {
+  --dsh-chat-content-width: var(--dsh-conversation-column-width, 100%);
+  --dsh-composer-side-clearance: 8px;
+}
+
+/* The view switcher costs a whole row of a phone screen to reach a view that
+   wants a wide table, so the mobile regime keeps the transcript only. */
+.root[data-mobile] .tabs {
+  display: none;
+}
+
+/* The floating drawer trigger ("任务", ~62px at left:12) overlaps the title
+   row's 20px inset; reserve its width plus a gap so the crumb cannot slide
+   under it. */
+.root[data-mobile] .header {
+  padding-left: 92px;
+}
+
+/* A phone-width column cannot honor the current crumb's "read in full, wrap"
+   rule without crowding out the header controls; ellipsize it like an
+   ancestor crumb. */
+.root[data-mobile] .crumbCurrent {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The open-in-app split (reveal working directory + choose application)
+   launches native desktop apps, which a phone cannot do, so the mobile
+   header drops the whole utilities seat. */
+.root[data-mobile] .headerUtilities {
+  display: none;
+}
+
+/* iOS zooms the whole page in whenever focus lands on a control whose rendered
+   font is under 16px, and it never zooms back out — which also pushes the
+   fixed composer out of the visual viewport. Since iOS 10 Safari deliberately
+   ignores `maximum-scale` and `user-scalable=no`, so the rendered font is the
+   only lever left.
+   The floor covers the editor's descendants too: Lexical sets its own sizes on
+   the nodes inside, and iOS reads the focused node, not this box. Only the
+   draft input takes the floor; transcript text keeps the reader's preference. */
+.root[data-mobile] [data-composer-input],
+.root[data-mobile] [data-composer-input] * {
+  font-size: max(16px, var(--dsh-content-font-size, 14px));
+}
+
+/* Collapsed: the seat keeps its measurements (the ResizeObserver still runs)
+   but takes no space and no clicks. */
+.composerSeat[data-composer-collapsed] {
+  visibility: hidden;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Opened over the transcript: a bottom sheet the transcript scrolls under.
+   No scrim — the user keeps reading and scrolling the messages they are
+   replying to, and the same pill that opened the sheet closes it.
+
+   Absolute against the conversation column, which the mobile frame has already
+   sized to the visual viewport (ui-layout AppFrame.module.css): the column's
+   floor is the visible floor, so the sheet clears the soft keyboard without
+   reading any keyboard measurement of its own. */
+.root[data-mobile][data-phase='active'] .composerSeat:not([data-composer-collapsed]) {
+  position: absolute;
+  right: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: 0;
+  z-index: 12;
+  padding-top: 8px;
+  background: var(--dsw-alias-bg-base);
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+/* The sheet floats over the scrollport, so the transcript reserves its height
+   (published by the seat's ResizeObserver) to keep the last message reachable
+   above it. */
+.root[data-mobile][data-phase='active'] .scrollBody:has(.composerSeat:not([data-composer-collapsed])) {
+  padding-bottom: var(--dsh-composer-height, 0px);
+}
+
+/* Collapsed, the seat measures zero but the floating "输入" pill still covers
+   20px-from-floor + 48px height; reserve that band plus clearance so the last
+   message's action row never finishes underneath the pill. */
+.root[data-mobile][data-phase='active'] .scrollBody:has(.composerSeat[data-composer-collapsed]) {
+  padding-bottom: 84px;
+}
+
+/* ONE floating pill owns both directions: bottom-right of the column, on the
+   send button's blue pair with a white label. Tapping it opens the composer;
+   tapping the same spot closes it. */
+.composerTrigger {
+  /* Absolute for the same reason as the sheet: the column is already the
+     visible region, so its floor is above the keyboard. */
+  position: absolute;
+  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  z-index: 13; /* above the sheet (12): it rides on the sheet's top edge while open */
+  display: grid;
+  place-items: center;
+  height: 48px;
+  min-width: 48px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 24px;
+  background: var(--dsw-alias-button-info-fill);
+  /* Static white, matching the send circle: the label stays white on the blue
+     fill in both themes. */
+  color: #fff;
+  font-size: 15px;
+  line-height: 20px;
+  box-shadow: var(--dsw-elevation-soft);
+  cursor: pointer;
+  /* Travels with the sheet rather than jumping: the open state only changes
+     `bottom` and the horizontal padding. */
+  transition:
+    bottom var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    padding var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+.composerTrigger:hover {
+  background: var(--dsw-alias-button-info-hover);
+}
+
+/* Open: the same pill sits just above the sheet it opened, shrunk to its
+   chevron so it covers as little of the composer as possible. */
+.composerTrigger[data-composer-open] {
+  bottom: calc(
+    env(safe-area-inset-bottom, 0px) + var(--dsh-composer-height, 0px) + 12px
+  );
+  padding: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composerTrigger {
+    transition: none;
+  }
+}

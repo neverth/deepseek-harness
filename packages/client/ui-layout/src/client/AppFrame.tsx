@@ -19,7 +19,7 @@ import type { ReactNode } from 'react'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import { CENTER_MIN, clampWidth, computeColumns, RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_MAX_RATIO, RIGHTBAR_MIN, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT } from './columns.ts'
+import { CENTER_MIN, clampWidth, computeColumns, MOBILE_DRAWER, MOBILE_MAX, RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_MAX_RATIO, RIGHTBAR_MIN, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT } from './columns.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
@@ -129,6 +129,10 @@ export function AppFrame({
   const layoutInfo = useStore(state => state.layoutInfo)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const viewport = layoutInfo.viewportWidth
+  // Every navigable session, not just the one the right column tracks: the
+  // mobile drawer must also close when the user picks a blank session.
+  const currentSessionId = useSessions(state =>
+    Object.values(state.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id)
 
   // Track the frame's own box (not the window): rAF-throttled ResizeObserver.
   useLayoutEffect(() => {
@@ -157,12 +161,106 @@ export function AppFrame({
     }
   }, [actions])
 
+  // Soft keyboard (mobile): the layout viewport keeps its full height while the
+  // visual viewport shrinks and pans, so the app's own box stays taller than
+  // the part of the screen the user can see. Everything bottom-anchored then
+  // sits below the keys, and iOS starts panning to drag the focused editor back
+  // into view — a pan that fires again on every height change, which is what
+  // made the composer sink on a deleted line and snap back a frame later.
+  //
+  // The frame is therefore glued to the visual viewport in the mobile regime
+  // (AppFrame.module.css consumes both properties): its top follows the pan and
+  // its height follows the shrink, so the layout box *is* the visible box. Any
+  // floor inside it is above the keys as ordinary layout, with no per-component
+  // keyboard arithmetic, and the focused editor is never out of view, so iOS has
+  // nothing left to pan toward and the oscillation stops at the source.
+  //
+  // `interactive-widget=resizes-content` in the shell would have the engine do
+  // this; no WebKit release implements it (iOS Safari 26 and 27 included), so
+  // the measurement is the load-bearing path on the phones this ships to.
+  //
+  // Both numbers come from `visualViewport`, never `window.innerHeight`: iOS 26
+  // made innerHeight track the *visual* viewport, so the difference the previous
+  // measurement relied on is identically zero there and its published inset
+  // never left 0 no matter how much screen the keys took (measured with the
+  // keyboard up: innerHeight 253, documentElement.clientHeight 714, visual
+  // height 253, offsetTop 461).
+  //
+  // The measurements ride CSS custom properties rather than React state: the
+  // keyboard moves the visual viewport during typing, scrolling, and the
+  // editor's own growth, and re-rendering the whole frame on each of those
+  // stutters. The properties update in place, so only the rules that read them
+  // reflow.
+  //
+  // `scroll` matters as much as `resize`: iOS pans the visual viewport without
+  // resizing it whenever the focused box changes height, and the frame has to
+  // follow that pan to stay on the visible region. That follow is gated on the
+  // keyboard being up (`vv.height` shorter than the layout viewport): with no
+  // inner scroller able to consume the gesture — a short transcript, or a drag
+  // over non-scrolling chrome such as the sidebar header — iOS rubber-bands the
+  // document itself, and offsetTop then moves WITH the finger while the layout
+  // viewport keeps full height. Following it there moves the frame the same way
+  // the finger goes, reading as a reversed scroll. Keyboard pans are the only
+  // pan worth following, and the keys always shrink vv.height first.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (vv === null || vv === undefined) return
+    const root = document.documentElement
+    let raf: number | null = null
+    const update = (): void => {
+      raf = null
+      const frame = frameRef.current
+      if (frame !== null && frame.getBoundingClientRect().width <= MOBILE_MAX) {
+        // documentElement.clientHeight stays the layout viewport height even on
+        // iOS 26, where window.innerHeight tracks the visual viewport instead.
+        const keyboardUp = vv.height < root.clientHeight - 1
+        root.style.setProperty('--dsh-visual-viewport-height', `${String(Math.round(vv.height))}px`)
+        root.style.setProperty(
+          '--dsh-visual-viewport-top',
+          keyboardUp ? `${String(Math.round(vv.offsetTop))}px` : '0px',
+        )
+        return
+      }
+      root.style.removeProperty('--dsh-visual-viewport-height')
+      root.style.removeProperty('--dsh-visual-viewport-top')
+    }
+    const schedule = (): void => {
+      if (raf !== null) return
+      raf = requestAnimationFrame(update)
+    }
+    vv.addEventListener('resize', schedule)
+    vv.addEventListener('scroll', schedule)
+    window.addEventListener('resize', schedule)
+    schedule()
+    return () => {
+      vv.removeEventListener('resize', schedule)
+      vv.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', schedule)
+      if (raf !== null) cancelAnimationFrame(raf)
+      root.style.removeProperty('--dsh-visual-viewport-height')
+      root.style.removeProperty('--dsh-visual-viewport-top')
+    }
+  }, [])
+
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
   const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
   const sidebarPreference = sidebarCollapsed
     ? 0
     : layoutInfo.sidebar === 0 ? SIDEBAR_DEFAULT : layoutInfo.sidebar
   const rightbarPreference = layoutInfo.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO
+  // Mobile regime: the sidebar leaves the grid and rides above the
+  // conversation as an overlay drawer (same narrowExpanded toggle), the
+  // right column stays closed, and the center column owns the full width.
+  const mobile = viewport <= MOBILE_MAX
+  const drawerOpen = mobile && layoutInfo.narrowExpanded
+  const drawerWidth = Math.min(MOBILE_DRAWER, Math.max(0, viewport - 56))
+  // The drawer covers the conversation, so navigating to a session inside it
+  // must reveal that session: close on every actual session change.
+  const lastDrawerSession = useRef(currentSessionId)
+  useEffect(() => {
+    if (lastDrawerSession.current !== currentSessionId && drawerOpen) actions.toggleSidebar()
+    lastDrawerSession.current = currentSessionId
+  }, [actions, currentSessionId, drawerOpen])
   // Desktop reopen controls occupy the frame's shell.leading seat (macOS) or
   // the Windows caption row; neither platform keeps an icon rail.
   const darwin = document.documentElement.dataset.platform === 'darwin'
@@ -170,8 +268,13 @@ export function AppFrame({
     || document.documentElement.hasAttribute('data-windows-titlebar') ? 0 : SIDEBAR_COLLAPSED
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
-  const normal = computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth)
-  const cols = computeColumns(viewport, sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, collapsedWidth)
+  const closed = { sidebar: 0, center: viewport, rightbar: 0 }
+  const normal = mobile
+    ? closed
+    : computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth)
+  const cols = mobile
+    ? closed
+    : computeColumns(viewport, sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, collapsedWidth)
   const colsRef = useRef(cols)
   colsRef.current = cols
   const rightbarWidth = useRef(normal.rightbar)
@@ -240,9 +343,9 @@ export function AppFrame({
   // the discrete decisions (track present, collapse state) and the drag base.
   const rightbarMax = cols.rightbar === 0 ? 0 : clampWidth(rightbarPreference, RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO)
   const sidebar = useMemo(() => renderSlot('sidebar', {
-    collapsed: sidebarCollapsed,
-    width: cols.sidebar,
-  }), [renderSlot, sidebarCollapsed, cols.sidebar])
+    collapsed: mobile ? false : sidebarCollapsed,
+    width: mobile ? drawerWidth : cols.sidebar,
+  }), [renderSlot, mobile, sidebarCollapsed, drawerWidth, cols.sidebar])
   const main = useMemo(() => (
     <MainPanel usePanelInfo={usePanelInfo} renderSlot={renderSlot} />
   ), [usePanelInfo, renderSlot])
@@ -261,9 +364,13 @@ export function AppFrame({
       className={css.frame}
       style={{
         ...(document.documentElement.hasAttribute('data-windows-titlebar')
-          ? { '--dsh-windows-sidebar-width': `${cols.sidebar}px` } : {}),
-        gridTemplateColumns:
-          `${cols.sidebar}px minmax(${cols.rightbar === 0 ? 0 : CENTER_MIN}px, 1fr) minmax(0px, ${rightbarMax}px)`,
+          ? { '--dsh-windows-sidebar-width': `${mobile ? drawerWidth : cols.sidebar}px` } : {}),
+        // The mobile drawer leaves the grid (absolute), so the frame drops to
+        // the two tracks that remain in flow: center takes the width and the
+        // right column closes.
+        gridTemplateColumns: mobile
+          ? 'minmax(0, 1fr) 0px'
+          : `${cols.sidebar}px minmax(${cols.rightbar === 0 ? 0 : CENTER_MIN}px, 1fr) minmax(0px, ${rightbarMax}px)`,
       }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-rightbar-collapsed={cols.rightbar === 0 || undefined}
@@ -271,13 +378,15 @@ export function AppFrame({
       data-rightbar-instant={layoutInfo.rightbarInstant || undefined}
       data-dragging={dragging || undefined}
       data-animating={animating > 0 || undefined}
+      data-mobile={mobile || undefined}
+      data-drawer-open={drawerOpen || undefined}
     >
       <DocumentTitle
         productTitle={productTitle}
         useSessions={useSessions}
         usePanelInfo={usePanelInfo}
       />
-      <div className={css.sidebarCol}>
+      <div className={css.sidebarCol} style={mobile ? { width: drawerWidth } : undefined}>
         {sidebar}
       </div>
       <>
@@ -297,9 +406,46 @@ export function AppFrame({
           {leading}
         </div>
       )}
-      {/* The collapsed rail is fixed-width: no resize handle while closed. */}
-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-      {layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && (
+      {/* Mobile chrome: the drawer trigger is the only way back to a sidebar
+          that has left the frame, and the scrim dismisses it. */}
+      {mobile && (
+        <button
+          type="button"
+          className={css.drawerTrigger}
+          aria-label={t('nav.sessions')}
+          aria-expanded={drawerOpen}
+          onClick={() => { actions.toggleSidebar() }}
+        >
+          {t('nav.sessions')}
+        </button>
+      )}
+      {drawerOpen && (
+        <div
+          className={css.scrim}
+          role="presentation"
+          onClick={() => { actions.toggleSidebar() }}
+        />
+      )}
+      {/* Visible dismiss affordance riding above the scrim (not inside it:
+          the scrim closes on click, so a nested button would double-toggle
+          and immediately reopen the drawer). */}
+      {drawerOpen && (
+        <button
+          type="button"
+          className={css.drawerClose}
+          aria-label={t('nav.closeDrawer')}
+          onClick={() => { actions.toggleSidebar() }}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="6" y1="6" x2="18" y2="18" />
+            <line x1="18" y1="6" x2="6" y2="18" />
+          </svg>
+        </button>
+      )}
+      {/* The collapsed rail is fixed-width: no resize handle while closed, and
+          the mobile regime has no draggable column edges at all. */}
+      {!mobile && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+      {!mobile && layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && (
         <DragHandle side="rightbar" left={viewport - normal.rightbar} onStart={onRightbarStart} onDrag={onRightbarDrag} onEnd={onDragEnd} />
       )}
     </div>

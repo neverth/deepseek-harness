@@ -679,3 +679,126 @@ describe('AppFrame frame measurement lifecycle', () => {
     expect(animationFrames.size).toBe(0)
   })
 })
+
+describe('AppFrame — soft keyboard sizing', () => {
+  /**
+   * Install a movable visual viewport, mimicking a keyboard covering part of
+   * the screen while the layout viewport keeps its height.
+   * @returns handles to move the viewport and to fire either of its events.
+   */
+  function stubVisualViewport(layoutHeight = 1080): {
+    set: (height: number, offsetTop: number) => void
+    fire: (type: 'resize' | 'scroll') => void
+  } {
+    const listeners = new Map<string, Set<() => void>>()
+    const vv = {
+      height: layoutHeight,
+      offsetTop: 0,
+      addEventListener: (type: string, fn: () => void) => {
+        listeners.set(type, (listeners.get(type) ?? new Set<() => void>()).add(fn))
+      },
+      removeEventListener: (type: string, fn: () => void) => { listeners.get(type)?.delete(fn) },
+    }
+    vi.stubGlobal('visualViewport', vv)
+    Object.defineProperty(document.documentElement, 'clientHeight', {
+      configurable: true,
+      get: () => layoutHeight,
+    })
+    return {
+      set: (height, offsetTop) => { vv.height = height; vv.offsetTop = offsetTop },
+      fire: (type) => { for (const fn of [...listeners.get(type) ?? []]) fn() },
+    }
+  }
+
+  const height = (): string => document.documentElement.style.getPropertyValue('--dsh-visual-viewport-height')
+  const top = (): string => document.documentElement.style.getPropertyValue('--dsh-visual-viewport-top')
+
+  it('sizes a narrow frame to the visible region the keyboard leaves', () => {
+    const vv = stubVisualViewport()
+    frameWidth = 500
+    mountFrame()
+    act(() => { vi.advanceTimersByTime(20) })
+    expect([height(), top()]).toEqual(['1080px', '0px'])
+
+    vv.set(700, 0)
+    act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
+    expect([height(), top()]).toEqual(['700px', '0px'])
+
+    vv.set(1080, 0)
+    act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
+    expect([height(), top()]).toEqual(['1080px', '0px'])
+  })
+
+  // iOS pans the visual viewport without resizing it when the focused box
+  // changes height, and reports the pan only through `scroll`. The frame has to
+  // follow it or the composer's floor drifts off the visible region — the
+  // add-a-line/delete-a-line case.
+  it('follows a pan that resizes nothing', () => {
+    const vv = stubVisualViewport()
+    frameWidth = 500
+    mountFrame()
+    vv.set(700, 0)
+    act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
+    expect([height(), top()]).toEqual(['700px', '0px'])
+
+    vv.set(700, 60)
+    act(() => { vv.fire('scroll'); vi.advanceTimersByTime(20) })
+    expect([height(), top()]).toEqual(['700px', '60px'])
+  })
+
+  // With the keyboard dismissed the visual viewport keeps the layout height, so
+  // an offsetTop reported by a document rubber-band (a drag no inner scroller
+  // consumes: a short transcript or the sidebar header) must not move the
+  // frame — following it translates the page the same way the finger goes and
+  // reads as a reversed scroll.
+  it('ignores a rubber-band pan while the keyboard is dismissed', () => {
+    const vv = stubVisualViewport()
+    frameWidth = 500
+    mountFrame()
+    act(flushFrames)
+    expect([height(), top()]).toEqual(['1080px', '0px'])
+
+    vv.set(1080, 120)
+    act(() => { vv.fire('scroll'); flushFrames() })
+    expect([height(), top()]).toEqual(['1080px', '0px'])
+
+    vv.set(1080, -80)
+    act(() => { vv.fire('scroll'); flushFrames() })
+    expect([height(), top()]).toEqual(['1080px', '0px'])
+
+    // The pan follow resumes once the keyboard actually shrinks the viewport.
+    vv.set(700, 240)
+    act(() => { vv.fire('resize'); flushFrames() })
+    expect([height(), top()]).toEqual(['700px', '240px'])
+  })
+
+  // The published height is read from the visual viewport alone. iOS 26 made
+  // window.innerHeight track that same viewport, so any measurement derived
+  // from their difference collapses to zero exactly when the keyboard is up.
+  it('ignores an innerHeight that tracks the visual viewport', () => {
+    const vv = stubVisualViewport()
+    frameWidth = 500
+    mountFrame()
+    vv.set(253, 461)
+    window.innerHeight = 253
+    act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
+    expect([height(), top()]).toEqual(['253px', '461px'])
+  })
+
+  it('leaves a desktop frame unsized and drops the properties on unmount', () => {
+    const vv = stubVisualViewport()
+    frameWidth = 1920
+    const { unmount } = mountFrame()
+    vv.set(700, 0)
+    act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
+    expect([height(), top()]).toEqual(['', ''])
+
+    frameWidth = 500
+    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
+    act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
+    expect(height()).toBe('700px')
+
+    unmount()
+    expect([height(), top()]).toEqual(['', ''])
+  })
+})
