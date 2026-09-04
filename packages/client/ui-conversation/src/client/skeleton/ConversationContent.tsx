@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
+import { IconChevronDownOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
 import type { ConversationContentProps, ConversationViewsProps, InputZone } from '../contract/slots.ts'
@@ -13,6 +14,10 @@ function ConversationSessionView({ renderSlot }: ConversationViewsProps) {
 function NoConversationWidthControls() {
   return null
 }
+
+/** Column width at or below which the composer collapses to a floating trigger
+ * (mirrors the layout frame's mobile regime). */
+const MOBILE_MAX = 768
 
 /**
  * Render the shared Conversation body and its occurrence-selected local Components.
@@ -41,6 +46,36 @@ export function ConversationContent(props: ConversationContentProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState<WorkspaceId | undefined>()
   const pickerAnchor = useRef<HTMLButtonElement>(null)
+  // Mobile regime: the composer leaves the flow and opens from a floating
+  // trigger, so a narrow column shows the transcript full-height. Only the
+  // main column: an embedded occurrence keeps its inline composer.
+  const [mobile, setMobile] = useState(false)
+  const [composerOpen, setComposerOpen] = useState(false)
+  const mainColumn = props.variant !== 'embedded'
+  useLayoutEffect(() => {
+    if (body === null || !mainColumn) return
+    const measure = () => {
+      const next = body.offsetWidth <= MOBILE_MAX
+      setMobile(next)
+      body.parentElement?.toggleAttribute('data-mobile', next)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(body)
+    measure()
+    return () => {
+      observer.disconnect()
+      body.parentElement?.removeAttribute('data-mobile')
+    }
+  }, [body, mainColumn])
+  // Escape is the second exit from the open sheet, beside its collapse button.
+  useEffect(() => {
+    if (!composerOpen) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setComposerOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => { document.removeEventListener('keydown', onKeyDown) }
+  }, [composerOpen])
 
   // Publishes the two live measurements floating View chrome reads off the
   // scroll body: the seat's height as --dsh-composer-height, so controls clear
@@ -49,14 +84,19 @@ export function ConversationContent(props: ConversationContentProps) {
   // seat leaves visible. Callback ref, not an effect; stable identity prevents
   // observer churn while the first blank session fills the resident body
   // outlet.
+  // The two land at different levels: viewport height is the scrollport's own
+  // fact, while composer height goes on the band that holds BOTH the
+  // scrollport and the mobile composer toggle — a sibling of the scroller
+  // cannot inherit a variable set on it.
   const seatObserver = useRef<ResizeObserver | null>(null)
   const seatResizeRef = useCallback((seat: HTMLDivElement | null): void => {
     seatObserver.current?.disconnect()
     seatObserver.current = null
     const scroller = seat?.parentElement ?? null
-    if (seat === null || scroller === null) return
+    const band = scroller?.parentElement ?? null
+    if (seat === null || scroller === null || band === null) return
     seatObserver.current = new ResizeObserver(() => {
-      scroller.style.setProperty('--dsh-composer-height', `${seat.offsetHeight}px`)
+      band.style.setProperty('--dsh-composer-height', `${seat.offsetHeight}px`)
       scroller.style.setProperty(
         '--dsh-conversation-viewport-height',
         `${scroller.clientHeight}px`,
@@ -179,8 +219,17 @@ export function ConversationContent(props: ConversationContentProps) {
   // only `.composerStack`: overlay:true renders those as siblings, and sticky
   // on the fallback alone would leave a business-owned takeover at the content
   // end off-screen when the user is not pinned to the floor.
+  // Mobile only collapses the docked composer: the hero IS the composer, and
+  // hiding it would leave the blank session with nothing to act on.
+  const collapsedComposer = mainColumn && mobile && phase === 'active' && !composerOpen
   const composerSeat = (
-    <div ref={seatResizeRef} className={css.composerSeat} data-composer-seat="" data-conversation-region="composer">
+    <div
+      ref={seatResizeRef}
+      className={css.composerSeat}
+      data-composer-seat=""
+      data-conversation-region="composer"
+      {...collapsedComposer ? { 'data-composer-collapsed': '' } : {}}
+    >
       {composer}
     </div>
   )
@@ -198,6 +247,18 @@ export function ConversationContent(props: ConversationContentProps) {
         {sessionId === undefined ? null : <Views />}
         {composerSeat}
       </div>
+      {mainColumn && mobile && phase === 'active' && (
+        <button
+          type="button"
+          className={css.composerTrigger}
+          data-composer-open={composerOpen || undefined}
+          aria-expanded={composerOpen}
+          aria-label={composerOpen ? t('input.close') : t('input.open')}
+          onClick={() => { setComposerOpen(open => !open) }}
+        >
+          {composerOpen ? <IconChevronDownOutlineRegular size={18} /> : t('input.open')}
+        </button>
+      )}
       <WidthControls container={body} phase={phase} />
     </div>
   )
