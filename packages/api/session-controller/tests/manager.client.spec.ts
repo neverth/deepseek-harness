@@ -886,7 +886,7 @@ describe('subagent catalogs', () => {
         },
         activate: true, assistantStream: true,
         maxMessages: 500,
-        turnWindow: { minMessages: 50, minTurns: 2 },
+        turnWindow: { minMessages: 500, minTurns: 2 },
       },
     ])
     expect(mock.log.requests('session/page')).toEqual([])
