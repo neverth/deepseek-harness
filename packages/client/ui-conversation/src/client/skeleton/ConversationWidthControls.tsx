@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { ConversationWidthControlsProps } from '../contract/slots.ts'
 import css from './ConversationRoot.module.css'
 
@@ -6,6 +6,8 @@ import css from './ConversationRoot.module.css'
 const WIDTH_PREF_KEY = 'dsh.conversation.contentWidth'
 /** Floor for a dragged content width; matches the layout center-column minimum. */
 const CONTENT_MIN = 640
+/** Column width at or below which a mobile column has no room for width handles. */
+const MOBILE_MAX = 768
 /** Horizontal room reserved for both handles and their safe edge zones. */
 const CONTENT_EDGE_BUDGET = 176
 const WHEEL_DELTA_LINE = 1
@@ -134,9 +136,11 @@ function WidthHandle(props: {
  * @returns two active-phase width handles, or no controls outside the active phase.
  */
 export function ConversationWidthControls({ container, phase }: ConversationWidthControlsProps) {
+  const [mobile, setMobile] = useState(false)
   const publishWidths = useCallback((container: HTMLDivElement): void => {
     const target = container.parentElement ?? container
     const column = container.offsetWidth
+    setMobile(column <= MOBILE_MAX)
     target.style.setProperty('--dsh-conversation-column-width', `${column}px`)
     const preference = readWidthPreference()
     if (preference === null) target.style.removeProperty('--dsh-chat-user-width')
@@ -168,7 +172,7 @@ export function ConversationWidthControls({ container, phase }: ConversationWidt
     if (container !== null) publishWidths(container)
   }, [container, publishWidths])
 
-  if (container === null || phase !== 'active') return null
+  if (container === null || phase !== 'active' || mobile) return null
   return (['left', 'right'] as const).map(side => (
     <WidthHandle
       key={side}
