@@ -1,9 +1,5 @@
-/** Fixed-pitch virtual turn rail with independent activation and scroll controls. */
-import {
-  forwardRef, memo, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState,
-  type CSSProperties, type ForwardedRef,
-} from 'react'
-import { defaultRangeExtractor, elementScroll, observeElementOffset, useVirtualizer, type Range } from '@tanstack/react-virtual'
+import { memo, useCallback, useEffect, useId, useRef, useState } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import type { TurnRailItem } from './turn-rail-items.ts'
 import css from './TurnNavigator.module.css'
@@ -11,229 +7,114 @@ import css from './TurnNavigator.module.css'
 interface TurnNavigatorProps {
   readonly items: readonly TurnRailItem[]
   readonly activeTurn: number | null
-  /** Turn whose jump is still paging history in; its mark pulses. */
+  /** Turn whose jump is still paging history in; its row pulses. */
   readonly busyTurn: number | null
   readonly onNavigate: (item: TurnRailItem) => void
   readonly t: ChatViewSlotProps['t']
 }
 
-/** Imperative controls for known turns; unknown turn numbers are ignored. */
-export interface TurnNavigatorHandle {
-  /** @param turn - turn to activate through the navigation callback. */
-  activateTurn(turn: number): void
-  /** @param turn - turn to center in the rail without navigating the transcript. */
-  scrollToTurn(turn: number): void
+/** localStorage key for the dragged outline width preference (px). */
+const WIDTH_PREF_KEY = 'dsh.chat.turnOutlineWidth'
+/**
+ * Width the outline takes with no stored preference. The transcript centres a
+ * 680px column in roughly 912px of chat container at an ordinary window,
+ * leaving about 116px of margin per side, so this sits a little into the
+ * transcript's empty gutter and reads as a rail over it rather than a column
+ * competing for width. The drag handle owns every choice past this one.
+ */
+const DEFAULT_WIDTH = 160
+/** Narrowest useful outline: below this a summary reads as a few characters. */
+const MIN_WIDTH = 120
+/** Widest the outline may grow, whatever the margin allows. */
+const MAX_WIDTH = 420
+
+function clampWidth(width: number): number {
+  return Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, Math.round(width)))
 }
 
-/** Fixed pitch between neighbouring marks; overflow scrolls inside the frame. */
-const TURN_SPACING_PX = 10
-/** Rail padding above the first mark and below the last one, per end. */
-const RAIL_INSET_PX = 6
-/** Fade band the mask reserves at a scrollable end. */
-const FADE_PX = 24
-
-function preferredScrollBehavior(): 'auto' | 'smooth' {
-  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
-    ? 'auto'
-    : 'smooth'
+/** Stored width preference, or the default when absent or damaged. */
+function readWidthPreference(): number {
+  const raw = localStorage.getItem(WIDTH_PREF_KEY)
+  if (raw === null) return DEFAULT_WIDTH
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? clampWidth(parsed) : DEFAULT_WIDTH
 }
 
-interface TurnMarkProps extends Pick<TurnNavigatorProps, 'onNavigate' | 't'> {
-  readonly item: TurnRailItem
-  readonly index: number
-  readonly active: boolean
-  readonly busy: boolean
-  readonly previewId: string | undefined
-  readonly registerElement: (element: HTMLButtonElement | null) => void
-  readonly onPreview: (turn: number | null) => void
-  readonly onFocusChange: (turn: number | null) => void
-}
+type OutlineFrameStyle = CSSProperties & { readonly '--turn-outline-width': string }
+type PreviewStyle = CSSProperties & { readonly '--turn-preview-top': string }
 
-const TurnMark = memo(function TurnMark({
-  item, index, active, busy, previewId, registerElement, onNavigate, onPreview, onFocusChange, t,
-}: TurnMarkProps) {
-  const classes = [css.mark]
-  if (item.anchor.kind === 'unloaded') classes.push(css.markUnloaded)
-  if (active) classes.push(css.markActive)
-  else if (previewId !== undefined) classes.push(css.markPreview)
-  if (busy) classes.push(css.markBusy)
-  return (
-    <button
-      ref={registerElement}
-      data-index={index}
-      type="button"
-      className={classes.join(' ')}
-      aria-label={t(
-        item.anchor.kind === 'loaded' ? 'chat.turnNavigation.jump' : 'chat.turnNavigation.jumpLoad',
-        { turn: item.turn },
-      )}
-      aria-current={active ? 'true' : undefined}
-      aria-busy={busy ? 'true' : undefined}
-      aria-describedby={previewId}
-      onPointerMove={() => { onPreview(item.turn) }}
-      onClick={() => { onNavigate(item) }}
-      onFocus={() => { onFocusChange(item.turn) }}
-      onBlur={() => { onFocusChange(null) }}
-    />
-  )
-})
-
-function TurnNavigatorRail(
-  { items, activeTurn, busyTurn, onNavigate, t }: TurnNavigatorProps,
-  ref: ForwardedRef<TurnNavigatorHandle>,
-) {
+function TurnNavigatorRail({ items, activeTurn, busyTurn, onNavigate, t }: TurnNavigatorProps) {
   const [previewTurn, setPreviewTurn] = useState<number | null>(null)
-  const [focusedTurn, setFocusedTurn] = useState<number | null>(null)
+  const [previewTop, setPreviewTop] = useState(0)
+  const [width, setWidth] = useState(readWidthPreference)
+  const [dragging, setDragging] = useState(false)
   const scrollerRef = useRef<HTMLDivElement | null>(null)
-  const initialization = useRef({
-    placed: false,
-    index: 0,
-    follow: null as { index: number; count: number; height: number } | null,
-    publishOffset: null as ((offset: number, scrolling: boolean) => void) | null,
-  })
+  const frameRef = useRef<HTMLElement | null>(null)
+  const activeRef = useRef<HTMLButtonElement | null>(null)
   /** While the pointer works the rail, follow must not move it under the hand. */
   const pointerInsideRef = useRef(false)
+  const dragBase = useRef({ origin: 0, width: 0 })
   const previewId = useId()
-  const turnIndexes = useMemo(() => {
-    const indexes = new Map<number, number>()
-    items.forEach((item, index) => { indexes.set(item.turn, index) })
-    return indexes
-  }, [items])
-  const activeIndex = activeTurn === null ? undefined : turnIndexes.get(activeTurn)
-  useLayoutEffect(() => { initialization.current.index = activeIndex ?? 0 }, [activeIndex])
-  const focusedIndex = focusedTurn === null ? undefined : turnIndexes.get(focusedTurn)
-  const previewIndex = previewTurn === null ? undefined : turnIndexes.get(previewTurn)
-  const onFocusChange = useCallback((turn: number | null) => {
-    setFocusedTurn(turn)
+
+  // Keep the active row visible: centre it whenever it leaves the scrollport,
+  // unless the reader's pointer is working the rail.
+  useEffect(() => {
+    const scroller = scrollerRef.current
+    const row = activeRef.current
+    if (scroller === null || row === null || pointerInsideRef.current) return
+    const rowTop = row.offsetTop
+    const viewTop = scroller.scrollTop
+    const viewHeight = scroller.clientHeight
+    if (viewHeight <= 0) return
+    if (rowTop >= viewTop && rowTop + row.offsetHeight <= viewTop + viewHeight) return
+    const target = Math.max(0, rowTop - viewHeight / 2 + row.offsetHeight / 2)
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (typeof scroller.scrollTo === 'function') {
+      scroller.scrollTo({ top: target, behavior: reduced ? 'auto' : 'smooth' })
+    } else {
+      scroller.scrollTop = target
+    }
+  }, [activeTurn, items])
+
+  // The preview describes one row, so it opens beside that row's current
+  // position inside the scrolled ladder rather than following the pointer.
+  const showPreview = useCallback((turn: number, row: HTMLElement): void => {
+    const frame = frameRef.current
+    if (frame !== null) {
+      setPreviewTop(row.getBoundingClientRect().top - frame.getBoundingClientRect().top)
+    }
     setPreviewTurn(turn)
   }, [])
-  const virtualizer = useVirtualizer<HTMLDivElement, HTMLButtonElement>({
-    count: items.length,
-    enabled: items.length >= 2,
-    directDomUpdates: true,
-    directDomUpdatesMode: 'transform',
-    useScrollendEvent: true,
-    getScrollElement: useCallback(() => scrollerRef.current, []),
-    getItemKey: useCallback((index: number) => items[index]?.turn ?? index, [items]),
-    estimateSize: () => TURN_SPACING_PX,
-    measureElement: () => TURN_SPACING_PX,
-    initialRect: { width: 0, height: 0 },
-    initialOffset: 0,
-    scrollToFn: (offset, options, instance) => {
-      if (initialization.current.placed) elementScroll(offset, options, instance)
-    },
-    observeElementOffset: (instance, notify) => {
-      initialization.current.publishOffset = notify
-      const dispose = observeElementOffset(instance, notify)
-      return () => {
-        dispose?.()
-        initialization.current.placed = false
-        initialization.current.follow = null
-        initialization.current.publishOffset = null
-      }
-    },
-    observeElementRect: (instance, notify) => {
-      const element = instance.scrollElement
-      const Observer = instance.targetWindow?.ResizeObserver
-      if (element === null || Observer === undefined) return
-      const observer = new Observer(([entry]) => {
-        if (entry === undefined) return
-        const box = entry.borderBoxSize[0]
-        const rect = {
-          width: Math.round(box?.inlineSize ?? entry.contentRect.width),
-          height: Math.round(box?.blockSize ?? entry.contentRect.height),
-        }
-        const initial = initialization.current
-        if (!initial.placed && rect.height > 0) {
-          const max = Math.max(0, instance.getTotalSize() - rect.height)
-          const center = initial.index * TURN_SPACING_PX + RAIL_INSET_PX
-          const target = Math.max(0, Math.min(max, center - rect.height / 2))
-          initial.placed = true
-          initial.follow = { index: initial.index, count: instance.options.count, height: rect.height }
-          element.scrollTop = target
-          initial.publishOffset?.(target, false)
-        }
-        notify(rect)
-      })
-      observer.observe(element, { box: 'border-box' })
-      return () => { observer.disconnect() }
-    },
-    paddingStart: RAIL_INSET_PX - TURN_SPACING_PX / 2,
-    paddingEnd: RAIL_INSET_PX - TURN_SPACING_PX / 2,
-    scrollPaddingStart: FADE_PX,
-    scrollPaddingEnd: FADE_PX,
-    overscan: 3,
-    rangeExtractor: useCallback((range: Range) => {
-      const indexes = defaultRangeExtractor(range)
-      if (focusedIndex !== undefined) {
-        const last = Math.min(range.count - 1, focusedIndex + 1)
-        for (let index = Math.max(0, focusedIndex - 1); index <= last; index++) {
-          if (!indexes.includes(index)) indexes.push(index)
-        }
-        indexes.sort((left, right) => left - right)
-      }
-      return indexes
-    }, [focusedIndex]),
-  })
-  const scrollTop = virtualizer.scrollOffset ?? 0
-  const viewHeight = virtualizer.scrollRect?.height ?? 0
-  const virtualItems = virtualizer.getVirtualItems()
 
-  const scrollToIndex = useCallback((
-    index: number, reveal: 'if-needed' | 'always', behavior: 'auto' | 'smooth' | 'instant' = preferredScrollBehavior(),
-  ): void => {
-    const item = virtualizer.measurementsCache[index]
-    const height = virtualizer.scrollRect?.height ?? 0
-    if (item === undefined || height <= 0) return
-    const current = virtualizer.scrollOffset ?? 0
-    const center = item.start + item.size / 2
-    if (reveal === 'if-needed') {
-      const { scrollPaddingStart, scrollPaddingEnd } = virtualizer.options
-      if (center >= current + scrollPaddingStart && center <= current + height - scrollPaddingEnd) return
-    }
-    const target = center - height / 2
-    const max = Math.max(0, virtualizer.getTotalSize() - height)
-    const delta = Math.max(0, Math.min(max, target)) - current
-    if (delta !== 0) virtualizer.scrollBy(delta, { behavior })
-  }, [virtualizer])
-
-  useImperativeHandle(ref, (): TurnNavigatorHandle => ({
-    activateTurn(turn) {
-      const index = turnIndexes.get(turn)
-      const item = index === undefined ? undefined : items[index]
-      if (item !== undefined) onNavigate(item)
-    },
-    scrollToTurn(turn) {
-      const index = turnIndexes.get(turn)
-      if (index !== undefined) scrollToIndex(index, 'always')
-    },
-  }), [items, turnIndexes, onNavigate, scrollToIndex])
-
-  useEffect(() => {
-    if (viewHeight <= 0) {
-      initialization.current.follow = null
-      return
-    }
-    if (activeIndex === undefined || pointerInsideRef.current) return
-    const previous = initialization.current.follow
-    if (previous?.index === activeIndex && previous.count === items.length && previous.height === viewHeight) return
-    initialization.current.follow = { index: activeIndex, count: items.length, height: viewHeight }
-    const behavior = previous?.count === items.length && previous.height === viewHeight
-      ? preferredScrollBehavior()
-      : 'instant'
-    scrollToIndex(activeIndex, 'if-needed', behavior)
-  }, [activeIndex, items.length, viewHeight, scrollToIndex])
+  const draggedWidth = (clientX: number): number =>
+    // The rail is pinned to the right edge, so travel leftwards widens it.
+    clampWidth(dragBase.current.width - (clientX - dragBase.current.origin))
+  const onHandleDown = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragBase.current = { origin: event.clientX, width }
+    setDragging(true)
+  }, [width])
+  const onHandleMove = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    setWidth(draggedWidth(event.clientX))
+  }, [])
+  const onHandleUp = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    event.currentTarget.releasePointerCapture(event.pointerId)
+    setDragging(false)
+    localStorage.setItem(WIDTH_PREF_KEY, String(draggedWidth(event.clientX)))
+  }, [])
 
   if (items.length < 2) return null
-  const preview = previewIndex === undefined ? undefined : items[previewIndex]
-  const previewPosition = virtualItems.find(item => item.index === previewIndex)
-  const fadeClasses = [css.scroller]
-  if (scrollTop > 1) fadeClasses.push(css.fadeTop)
-  if (scrollTop < virtualizer.getTotalSize() - viewHeight - 1) fadeClasses.push(css.fadeBottom)
+  const preview = items.find(item => item.turn === previewTurn)
+  const frameStyle: OutlineFrameStyle = { '--turn-outline-width': `${String(width)}px` }
   return (
     <div className={css.slot}>
       <nav
-        className={css.frame}
+        ref={frameRef}
+        className={dragging ? `${css.frame} ${css.frameDragging}` : css.frame}
+        style={frameStyle}
         aria-label={t('chat.turnNavigation.label')}
         onPointerEnter={() => { pointerInsideRef.current = true }}
         onPointerLeave={() => {
@@ -241,37 +122,52 @@ function TurnNavigatorRail(
           setPreviewTurn(null)
         }}
       >
-        <div ref={scrollerRef} className={fadeClasses.join(' ')}>
-          <div ref={virtualizer.containerRef} className={css.marks}>
-            {virtualItems.map(({ index, key }) => {
-              const item = items[index]
-              if (item === undefined) return null
-              return (
-                <TurnMark
-                  key={key}
-                  item={item}
-                  index={index}
-                  active={item.turn === activeTurn}
-                  busy={item.turn === busyTurn}
-                  previewId={item.turn === previewTurn ? previewId : undefined}
-                  registerElement={virtualizer.measureElement}
-                  onNavigate={onNavigate}
-                  onPreview={setPreviewTurn}
-                  onFocusChange={onFocusChange}
-                  t={t}
-                />
-              )
-            })}
-          </div>
+        {/* The rail's inner edge resizes it, mirroring the transcript's own
+            width handles. */}
+        <div
+          className={css.handle}
+          role="presentation"
+          onPointerDown={onHandleDown}
+          onPointerMove={onHandleMove}
+          onPointerUp={onHandleUp}
+          onPointerCancel={onHandleUp}
+        />
+        <div ref={scrollerRef} className={css.scroller}>
+          {items.map((item) => {
+            const active = item.turn === activeTurn
+            const classes = [css.row]
+            if (item.anchor.kind === 'unloaded') classes.push(css.rowUnloaded)
+            if (active) classes.push(css.rowActive)
+            if (item.turn === busyTurn) classes.push(css.rowBusy)
+            return (
+              <button
+                key={item.turn}
+                ref={active ? activeRef : undefined}
+                type="button"
+                className={classes.join(' ')}
+                aria-label={t(
+                  item.anchor.kind === 'loaded' ? 'chat.turnNavigation.jump' : 'chat.turnNavigation.jumpLoad',
+                  { turn: item.turn },
+                )}
+                aria-current={active ? 'true' : undefined}
+                aria-busy={item.turn === busyTurn ? 'true' : undefined}
+                aria-describedby={item.turn === previewTurn ? previewId : undefined}
+                onClick={() => { onNavigate(item) }}
+                onPointerEnter={(event) => { showPreview(item.turn, event.currentTarget) }}
+                onFocus={(event) => { showPreview(item.turn, event.currentTarget) }}
+                onBlur={() => { setPreviewTurn(null) }}
+              >
+                {item.prompt || t('chat.turnNavigation.turn', { turn: item.turn })}
+              </button>
+            )
+          })}
         </div>
-        {preview !== undefined && previewPosition !== undefined && (
+        {preview !== undefined && !dragging && (
           <div
             id={previewId}
             role="tooltip"
             className={css.preview}
-            style={{
-              '--turn-preview-center': `${String(previewPosition.start + previewPosition.size / 2 - scrollTop)}px`,
-            } as CSSProperties}
+            style={{ '--turn-preview-top': `${String(previewTop)}px` } as PreviewStyle}
           >
             <div className={css.previewPrompt}>
               {preview.prompt || t('chat.turnNavigation.turn', { turn: preview.turn })}
@@ -285,11 +181,17 @@ function TurnNavigatorRail(
 }
 
 /**
- * Fixed-pitch rail of every known Turn — loaded marks scroll, unloaded marks
- * page history in first — with hover and focus previews. Overflow scrolls
- * inside the frame, gradient fades marking each scrollable end, and the
- * active mark centers only outside the fade-free band while the pointer is
- * elsewhere. Previews follow pointer movement or focus, not scrolling under
- * a stationary pointer.
+ * Standing outline of every known Turn: one always-readable row per Turn
+ * carrying its prompt summary, in session order. A loaded row scrolls to its
+ * Turn, an unloaded one pages history in first, and the active row keeps
+ * itself in view while the pointer is elsewhere. Hover or focus opens the
+ * fuller prompt-and-response preview beside that row, and the rail's inner
+ * edge drags to a width kept in localStorage.
+ *
+ * Memoized because it renders one host element per Turn while the enclosing
+ * view re-renders on every streaming delta: without the guard a long session
+ * rebuilds hundreds of rows per commit for an outline that only changes when
+ * a Turn is added, removed, or becomes active. Its props must therefore stay
+ * referentially stable across those commits.
  */
-export const TurnNavigator = memo(forwardRef(TurnNavigatorRail))
+export const TurnNavigator = memo(TurnNavigatorRail)

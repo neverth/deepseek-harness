@@ -1499,7 +1499,7 @@ describe('web e2e: long Chat scroll contract', () => {
     })
   })
 
-  it.skipIf(MODE === 'record')('virtualizes the outline rail and jumps to an unloaded turn', async () => {
+  it.skipIf(MODE === 'record')('shows every outline row and jumps to an unloaded turn', async () => {
     await withScrollWorld({
       failureShot: 'web-e2e-turn-rail-jump',
       seeds: [{ fixture: HISTORY_FIXTURE, id: RAIL_SESSION_ID }],
@@ -1507,46 +1507,26 @@ describe('web e2e: long Chat scroll contract', () => {
       await openSeed(world.page, HISTORY_FIXTURE, HISTORY_FIXTURE.markers.assistant(HISTORY_FIXTURE.turns))
       await expectBottom(world.page)
 
+      // The whole-log outline reaches the rail before any paging: one row
+      // per fixture turn, the oldest still in its load-and-jump form.
       const rail = world.page.getByRole('navigation', { name: 'Turn navigation' })
       const latest = rail.getByRole('button', { name: `Jump to turn ${String(HISTORY_FIXTURE.turns)}`, exact: true })
       await expect.poll(() => latest.getAttribute('aria-current'), { timeout: 15_000 }).toBe('true')
-      expect(await rail.getByRole('button').count()).toBeLessThan(HISTORY_FIXTURE.turns)
+      await expect.poll(() => rail.getByRole('button').count(), { timeout: 15_000 }).toBe(HISTORY_FIXTURE.turns)
       const firstUnloaded = rail.getByRole('button', { name: 'Load and jump to turn 1', exact: true })
-      expect(await firstUnloaded.count()).toBe(0)
+      expect(await firstUnloaded.count()).toBe(1)
+      // Every row reads without hover, and the ladder scrolls inside its frame.
+      expect(await firstUnloaded.textContent()).toContain(HISTORY_FIXTURE.markers.user(1))
       const railScroller = rail.locator('[class*="scroller"]')
       await expect.poll(() => railScroller.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
-      await expect.poll(() => rail.locator('[class*="fadeTop"]').count(), { timeout: 15_000 }).toBe(1)
-      const bodyBeforeRailScroll = await scrollGeometry(world.page)
-      await railScroller.hover()
-      await world.page.mouse.wheel(0, -HISTORY_FIXTURE.turns * 10)
-      await expect.poll(() => railScroller.evaluate(element => element.scrollTop)).toBe(0)
-      await firstUnloaded.waitFor({ state: 'visible' })
-      expect((await scrollGeometry(world.page)).scrollTop).toBe(bodyBeforeRailScroll.scrollTop)
 
-      const beforeRows = await loadedFlowRows(world.page)
-      await firstUnloaded.focus()
-      const tooltip = world.page.getByRole('tooltip')
-      await expect.poll(() => tooltip.count(), { timeout: 15_000 }).toBe(1)
-      await expect.poll(() => tooltip.textContent(), { timeout: 5_000 }).toContain(HISTORY_FIXTURE.markers.user(1))
-      expect(await tooltip.textContent()).toContain(HISTORY_FIXTURE.markers.assistant(1))
-      const previewId = await tooltip.getAttribute('id')
-      const hoveredMark = () => rail.evaluate(element => element.querySelector<HTMLButtonElement>('button:hover')?.dataset.index ?? null)
-      await expect.poll(hoveredMark).not.toBeNull()
-      const hoveredBefore = await hoveredMark()
-      await world.page.mouse.wheel(0, 80)
-      await expect.poll(() => railScroller.evaluate(element => element.scrollTop)).toBe(80)
-      await expect.poll(hoveredMark).toBe(String(Number(hoveredBefore) + 8))
-      await nextPaint(world.page)
-      expect(await firstUnloaded.evaluate(element => document.activeElement === element)).toBe(true)
-      expect(await firstUnloaded.getAttribute('aria-describedby')).toBe(previewId)
-      expect(await tooltip.textContent()).toContain(HISTORY_FIXTURE.markers.user(1))
-      await world.page.mouse.wheel(0, -80)
-      await expect.poll(() => railScroller.evaluate(element => element.scrollTop)).toBe(0)
-      const transcriptLayers = await tooltip.evaluate((preview) => {
-        const railSlot = preview.closest('nav')?.parentElement
+      // The rail stacks above transcript code-block banners, so a row is never
+      // covered by the content it navigates.
+      const transcriptLayers = await firstUnloaded.evaluate((row) => {
+        const railSlot = row.closest('nav')?.parentElement
         const codeBanner = document.querySelector<HTMLElement>('.md-code-block > :first-child')
         if (!(railSlot instanceof HTMLElement) || codeBanner === null) {
-          throw new Error('turn preview or code-block banner stacking context is unavailable')
+          throw new Error('turn rail or code-block banner stacking context is unavailable')
         }
         return {
           codeBanner: Number(getComputedStyle(codeBanner).zIndex),
@@ -1554,19 +1534,19 @@ describe('web e2e: long Chat scroll contract', () => {
         }
       })
       expect(transcriptLayers.rail).toBeGreaterThan(transcriptLayers.codeBanner)
+
+      // Activate the unloaded row by keyboard: it is the AT destination too.
+      const beforeRows = await loadedFlowRows(world.page)
+      await firstUnloaded.focus()
       await world.page.keyboard.press('Enter')
 
-      // The jump pages history in and lands on turn 1: its mark flips to the
+      // The jump pages history in and lands on turn 1: its row flips to the
       // loaded label and becomes current, the window grew, and the turn-1
       // user row sits at the reading line.
       const firstLoaded = rail.getByRole('button', { name: 'Jump to turn 1', exact: true })
       await expect.poll(() => firstLoaded.count(), { timeout: 60_000 }).toBe(1)
       await expect.poll(() => firstLoaded.getAttribute('aria-current'), { timeout: 15_000 }).toBe('true')
       expect(await loadedFlowRows(world.page)).toBeGreaterThan(beforeRows)
-      // Drop mark focus so its hover/focus preview (which echoes the prompt
-      // marker) leaves the DOM before the transcript count below.
-      await firstLoaded.evaluate((el) => { (el as HTMLElement).blur() })
-      await expect.poll(() => world.page.getByRole('tooltip').count(), { timeout: 15_000 }).toBe(0)
       await nextPaint(world.page)
       const marker = world.page.locator('[data-conversation-scroll]')
         .getByText(HISTORY_FIXTURE.markers.user(1), { exact: false })
@@ -1576,9 +1556,6 @@ describe('web e2e: long Chat scroll contract', () => {
       if (scrollport === null || row === null) throw new Error('turn-1 row or scrollport has no layout box')
       expect(row.y - scrollport.y).toBeGreaterThanOrEqual(0)
       expect(row.y - scrollport.y).toBeLessThanOrEqual(160)
-      // The rail followed the landing to the ladder top, so the fade now
-      // marks the other (downward) end.
-      await expect.poll(() => rail.locator('[class*="fadeBottom"]').count(), { timeout: 15_000 }).toBe(1)
       assertClean(world)
     })
   }, 180_000)
