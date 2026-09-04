@@ -21,6 +21,12 @@ export const SIDEBAR_COLLAPSED = 56
  * LG breakpoint); a manual toggle below it re-expands over the squeezed center
  * (stores.ts narrowExpanded). */
 export const SIDEBAR_AUTO_COLLAPSE = 1024
+/** Viewport width at or below which the frame switches to the mobile regime:
+ * the sidebar leaves the grid and rides above the conversation as an overlay
+ * drawer, and the right column stays closed. */
+export const MOBILE_MAX = 768
+/** Overlay-drawer width in the mobile regime (capped against the viewport in CSS). */
+export const MOBILE_DRAWER = 280
 /** Right column drag clamp floor. */
 export const RIGHTBAR_MIN = 300
 /** Maximum normal right panel width as a fraction of the frame. */
