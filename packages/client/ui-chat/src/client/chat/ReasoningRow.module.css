@@ -5,7 +5,20 @@
 
 .root:not([data-expanded]) {
   contain: size layout;
-  height: calc(24px + var(--dsh-content-font-delta, 0px));
+  /* Matches the .row height below; a mismatch clips or pads the contained box. */
+  height: calc(20px + var(--dsh-content-font-delta, 0px));
+}
+
+/* Think reads as the caption of the narration under it, not as one more
+   independent flow row, so its header sits 4px tighter than the shared 24px
+   disclosure chrome. Nested under .root to outrank DisclosureRow's own .row
+   and .title regardless of stylesheet order. */
+.root .row {
+  height: calc(20px + var(--dsh-content-font-delta, 0px));
+}
+
+.root .title {
+  line-height: calc(20px + var(--dsh-content-font-delta, 0px));
 }
 
 .row {
