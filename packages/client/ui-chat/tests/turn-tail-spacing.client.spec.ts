@@ -8,6 +8,8 @@ const read = (name: string): string =>
 
 describe('completed-turn spacing', () => {
   it('combines the flow and footer offsets around turn-tail content', () => {
+    // This fork tightens the conversation flow rhythm from 16px to 6px; the
+    // tail's own 4px action offset is unchanged.
     expect(read('ChatView.module.css')).toMatch(/margin-top:\s*var\(--dsh-chat-flow-gap, 6px\)/)
     const tail = read('TurnTailNodeView.module.css')
     expect(tail).toMatch(/\.root\s*\{[^}]*gap:\s*16px/s)
