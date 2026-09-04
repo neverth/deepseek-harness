@@ -11,7 +11,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import { internals, provideCmdline } from '@deepseek-ai/dsh-cmdline'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply, WEB_STARTUP_SERVICE, type WebStartupValues } from '../src/startup.ts'
 
 /** What one fixture boot observed. */
@@ -139,9 +139,24 @@ describe('web command-line provider', () => {
     expect(observed.exits).toEqual([1])
   })
 
-  it('rejects the intentionally unsupported all-interfaces host before the consumer activates', async () => {
-    const { values, observed } = await bootProvider(['--host', '0.0.0.0'])
-    expect(observed.out).toContain('--host 0.0.0.0 is intentionally not supported yet for safety: it would expose remote code execution to the network; use 127.0.0.1 instead')
+  it('publishes the opt-in all-interfaces host and warns that the bind is reachable', async () => {
+    const warnings: string[] = []
+    const warn = vi.spyOn(console, 'error').mockImplementation(message => void warnings.push(String(message)))
+    try {
+      const { values, observed } = await bootProvider(['--host', '0.0.0.0', '--no-open'])
+      expect(values?.host).toBe('0.0.0.0')
+      expect(observed.readerConfig).toMatchObject({ host: '0.0.0.0' })
+      expect(observed.exits).toEqual([])
+      expect(warnings.join('\n')).toContain('bound to 0.0.0.0')
+      expect(warnings.join('\n')).toContain('session token is the only gate')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('rejects a host outside the two supported bind literals', async () => {
+    const { values, observed } = await bootProvider(['--host', 'localhost'])
+    expect(observed.out).toContain('--host must be 127.0.0.1 or 0.0.0.0')
     expect(values).toBeUndefined()
     expect(observed.readerConfig).toBeUndefined()
     expect(observed.exits).toEqual([1])

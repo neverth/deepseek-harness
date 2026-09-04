@@ -356,14 +356,17 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
       expect(web.stdout).toContain('--port <port>')
       expect(web.stdout).not.toContain('dsh web: http://')
 
-      const wildcardHost = await runBuiltBin(['web', '--host', '0.0.0.0'], {
+      // An unsupported literal is still a usage error. All-interfaces is now
+      // opt-in, so it is not asserted here: it would bind a reachable port for
+      // the duration of the run rather than exiting.
+      const badHost = await runBuiltBin(['web', '--host', 'localhost'], {
         DSH_HOME: home,
         DSH_TELEMETRY_DISABLED: '1',
       })
-      expect(wildcardHost.code).toBe(1)
-      expect(wildcardHost.stdout).toBe('')
-      expect(wildcardHost.stderr).toContain('--host 0.0.0.0 is intentionally not supported yet for safety: it would expose remote code execution to the network; use 127.0.0.1 instead')
-      expect(wildcardHost.stderr).not.toContain('dsh web: http://')
+      expect(badHost.code).toBe(1)
+      expect(badHost.stdout).toBe('')
+      expect(badHost.stderr).toContain('--host must be 127.0.0.1 or 0.0.0.0')
+      expect(badHost.stderr).not.toContain('dsh web: http://')
 
       const headlessHelp = await runBuiltBin(['--profile', 'headless', '--help'], {
         DSH_HOME: home,

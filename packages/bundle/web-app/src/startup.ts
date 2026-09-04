@@ -13,6 +13,12 @@ import { parseCmdline } from '@deepseek-ai/dsh-cmdline'
 /** Stable Cordis plugin name. */
 export const name = 'web-startup'
 
+/** The loopback bind: reachable only from this host. */
+const LOOPBACK_HOST = '127.0.0.1'
+
+/** The all-interfaces bind: reachable from any host that can route to this port. */
+const ALL_INTERFACES_HOST = '0.0.0.0'
+
 /** Services required before the flags can be resolved. */
 export const inject = ['cmdlineArgs']
 
@@ -48,7 +54,7 @@ function webCommand(): Command {
     .name('dsh --profile web')
     .description('Serve the DeepSeek Harness browser UI.')
     .helpOption('-h, --help', 'show this help')
-    .option('--host <host>', 'bind host')
+    .option('--host <host>', `bind host: ${LOOPBACK_HOST} (default) or ${ALL_INTERFACES_HOST} to expose this agent on every interface`)
     .option('--no-open', 'do not open the Web UI in the default browser')
     .option('--port <port>', 'listen port; pass 0 to let the OS pick a free one')
     .option('--trusted-host <authority...>', 'extra authority the /api browser-trust fence accepts (host or host:port; repeatable)')
@@ -57,22 +63,41 @@ Examples:
   dsh --profile web                          serve on the composed host and port
   dsh --profile web --no-open                serve without opening a browser
   dsh --profile web --port 8080              serve on another port
+  dsh --profile web --host 0.0.0.0           expose on every interface (see the warning below)
+
+Binding ${ALL_INTERFACES_HOST} lets any host that reaches this port drive the agent
+with this account's permissions; the session token is the only gate. Prefer
+\`ssh -N -L 3080:${LOOPBACK_HOST}:3080 <host>\` unless the network is trusted.
 `)
 }
 
 /**
  * Parse and provide the Web invocation as an ordinary Cordis service. The
- * command's action publishes the flags this invocation named; `--host 0.0.0.0`
- * or a non-numeric `--port` is a usage error, so on rejection (and on `--help`)
- * nothing is provided.
+ * command's action publishes the flags this invocation named; a `--host`
+ * outside the two supported literals or a non-numeric `--port` is a usage
+ * error, so on rejection (and on `--help`) nothing is provided. Binding
+ * all-interfaces is permitted but warns, because the reachable agent runs
+ * under this account.
  * @param ctx - plugin context carrying the command line.
  */
 export function apply(ctx: Context): void {
   const program = webCommand()
   program.action(() => {
     const options = program.opts<WebOptions>()
-    if (options.host === '0.0.0.0') {
-      program.error('error: --host 0.0.0.0 is intentionally not supported yet for safety: it would expose remote code execution to the network; use 127.0.0.1 instead')
+    // The webServer schema binds exactly one of these two literals, so reject
+    // anything else here: a typo caught at parse time beats a schema failure
+    // during boot, which surfaces as a failed fiber instead of a usage error.
+    if (options.host !== undefined && options.host !== LOOPBACK_HOST && options.host !== ALL_INTERFACES_HOST) {
+      program.error(`error: --host must be ${LOOPBACK_HOST} or ${ALL_INTERFACES_HOST}, got ${JSON.stringify(options.host)}`)
+    }
+    // All-interfaces is opt-in and loud rather than refused. The session's
+    // permission preset decides what a reached agent may do, and a
+    // `danger-full-access` tree answers the network with arbitrary command
+    // execution under this account, so the operator is told once, on stderr,
+    // that the bind is exposed and what still gates it.
+    if (options.host === ALL_INTERFACES_HOST) {
+      console.error(`dsh web: WARNING — bound to ${ALL_INTERFACES_HOST}, so every host that can reach this port may drive this agent.`)
+      console.error('dsh web: the session token is the only gate; treat the printed URL as a credential and prefer an SSH tunnel on untrusted networks.')
     }
     if (options.port !== undefined && !/^\d+$/.test(options.port)) {
       program.error(`error: --port must be a number, got ${JSON.stringify(options.port)}`)
