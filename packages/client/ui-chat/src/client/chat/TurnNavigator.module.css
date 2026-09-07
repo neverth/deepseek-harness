@@ -201,9 +201,12 @@
   50% { opacity: 0.35; }
 }
 
-/* Below this the margin beside the centered transcript cannot hold a legible
-   row, so the outline hides rather than squeezing the conversation. */
-@container (max-width: 900px) {
+/* The outline overlays the margin beside the centered 680px transcript column.
+   Below 820px that margin drops under ~70px per side, too little for a legible
+   row, so the rail hides instead of covering the conversation. An ordinary
+   window with the details column open measures 912px here, so the threshold
+   has to sit well clear of it — 900px hid the rail at exactly that width. */
+@container (max-width: 820px) {
   .slot {
     display: none;
   }

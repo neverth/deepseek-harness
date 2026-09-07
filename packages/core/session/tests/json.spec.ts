@@ -64,6 +64,44 @@ describe('snapshotJsonValue', () => {
     expect(Object.getPrototypeOf(arraySnapshot)).toBe(Array.prototype)
   })
 
+  it('accepts an intrinsic whose native toString breaks and indents its body', () => {
+    // JavaScriptCore renders built-ins as `function Object() {\n    [native
+    // code]\n}` where V8 emits one line. Both satisfy the NativeFunction
+    // grammar, which fixes the tokens and leaves the whitespace to the engine,
+    // so a plain object must survive either spelling. The check reads the
+    // source through `Function.prototype.toString`, so the stand-in patches
+    // that intrinsic for the duration rather than the constructor's own
+    // `toString` property.
+    const nativeToString = Function.prototype.toString
+    const webKitSource = 'function Object() {\n    [native code]\n}'
+    Function.prototype.toString = function patched(this: unknown): string {
+      return this === Object ? webKitSource : nativeToString.call(this)
+    }
+    try {
+      expect(Function.prototype.toString.call(Object)).toBe(webKitSource)
+      expect(isJsonValue({ ok: 1 })).toBe(true)
+      expect(snapshotJsonValue({ ok: 1, nested: [2] })).toEqual({ ok: 1, nested: [2] })
+    } finally {
+      Function.prototype.toString = nativeToString
+    }
+  })
+
+  it('rejects a constructor whose source only mentions native code', () => {
+    // The grammar is the gate, not the substring: a forged function whose body
+    // merely contains the marker stays out.
+    const nativeToString = Function.prototype.toString
+    Function.prototype.toString = function patched(this: unknown): string {
+      return this === Object
+        ? 'function Object() { return "[native code]" }'
+        : nativeToString.call(this)
+    }
+    try {
+      expect(isJsonValue({ ok: 1 })).toBe(false)
+    } finally {
+      Function.prototype.toString = nativeToString
+    }
+  })
+
   it('reads each object value and array slot once while materializing', () => {
     class Exotic {
       readonly accepted = false
