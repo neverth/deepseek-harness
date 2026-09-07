@@ -34,6 +34,7 @@ export const zh = {
   'brand.localBuild': 'DSH 本地构建',
   'workspace.defaultName': '默认工作区',
   'nav.sessions': '任务',
+  'nav.closeDrawer': '关闭',
   'nav.input': '输入',
   'unknown': '未知',
   'none': '无',
