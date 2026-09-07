@@ -34,6 +34,22 @@ const COLLAPSE_SETTLE_MS = 150
  */
 const SCROLLBAR_LINGER_MS = 2000
 
+/**
+ * The two local dsh deployments this build offers a one-click switch between,
+ * in sidebar order. Both are reached on the development host's LAN address:
+ * 3082 is the proxy that forwards to the Mac instance, 3080 is the
+ * development host's own instance.
+ */
+const DEPLOYMENTS = [
+  { name: '3080', url: 'http://10.37.242.122:3080/' },
+  { name: '3082', url: 'http://10.37.242.122:3082/' },
+] as const
+
+/** Whether the page is already served by this deployment's authority. */
+function isCurrentDeployment(url: string): boolean {
+  return window.location.host === new URL(url).host
+}
+
 /** Format complete-build metadata for the local brand badge. */
 function localBuildVersion(): string | undefined {
   const version = process.env.DSH_CLIENT_VERSION
@@ -210,6 +226,37 @@ export function SidebarRoot({
 
       {/* Footer actions stack above Settings in both sidebar widths. */}
       <div className={css.footArea}>
+        {/* Local deployment switch: each button navigates this tab to that
+            deployment's root. The button for the authority already serving
+            this page is marked current and does nothing. */}
+        <div className={css.deployments}>
+          {DEPLOYMENTS.map(({ name, url }) => {
+            const current = isCurrentDeployment(url)
+            return (
+              <Tooltip
+                key={name}
+                label={current
+                  ? t('deployment.current', { name })
+                  : t('deployment.switch', { name })}
+                delayMs={500}
+              >
+                <button
+                  type="button"
+                  className={css.deployment}
+                  aria-label={current
+                    ? t('deployment.current', { name })
+                    : t('deployment.switch', { name })}
+                  aria-current={current ? 'page' : undefined}
+                  data-current={current || undefined}
+                  disabled={current}
+                  onClick={() => { window.location.assign(url) }}
+                >
+                  {name}
+                </button>
+              </Tooltip>
+            )
+          })}
+        </div>
         <div className={css.footerActions}>
           {renderSlot('sidebar.footer.action', { wide })}
         </div>

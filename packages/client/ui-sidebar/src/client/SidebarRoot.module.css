@@ -335,8 +335,58 @@
   display: flex;
 }
 
+/* Deployment switch: two equal-width buttons above the footer actions. On the
+   rail they stack, because 56px cannot hold both side by side. */
+.deployments {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding-bottom: 4px;
+}
+
+.deployment {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-button-floating-fill);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.deployment:hover:not([data-current]) {
+  background: var(--dsw-alias-button-floating-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The deployment already serving this page reads as selected, not clickable. */
+.deployment[data-current] {
+  background: var(--dsw-alias-button-info-fill);
+  border-color: transparent;
+  /* Static white, matching the composer's send circle: the label stays white
+     on the blue fill in both themes. */
+  color: #fff;
+  cursor: default;
+}
+
 .collapsed .footArea {
   align-items: center;
+}
+
+.collapsed .deployments {
+  flex-direction: column;
+  width: auto;
+}
+
+.collapsed .deployment {
+  width: 40px;
+  padding: 0;
 }
 
 .collapsed .settingsArea,

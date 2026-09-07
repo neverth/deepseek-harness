@@ -167,6 +167,12 @@
         # A deployment adding authorities keeps this expression and concatenates
         # its literals, for example: ['app.internal', ...ctx.webRuntime.trustedHosts].
         trustedHosts: !!js ctx.webRuntime.trustedHosts
+        # This deployment treats network reachability as its access control:
+        # both instances serve one trusted LAN, and the token/cookie step turned
+        # switching between them into a manual login. Every host that can reach
+        # the bind now drives this agent with the launching account's
+        # permissions.
+        requireBrowserAuth: false
 
     # Raw Blob and ReadableStream uploads run independently of Connection's
     # RPC and generation service.

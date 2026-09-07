@@ -6,6 +6,8 @@ export const zh = {
   'session.new.label': '新建会话',
   'toggle.open': '打开侧边栏',
   'toggle.collapse': '收起侧边栏',
+  'deployment.switch': '切换到 {name} 部署',
+  'deployment.current': '当前部署：{name}',
 } satisfies Record<string, string>
 
 /** The sidebar namespace key union. */
@@ -17,4 +19,6 @@ export const en = {
   'session.new.label': 'New session',
   'toggle.open': 'Open sidebar',
   'toggle.collapse': 'Collapse sidebar',
+  'deployment.switch': 'Switch to the {name} deployment',
+  'deployment.current': 'Current deployment: {name}',
 } satisfies Record<SidebarKey, string>
