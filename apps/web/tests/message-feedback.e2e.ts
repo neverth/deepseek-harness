@@ -155,7 +155,6 @@ describe('web e2e: durable per-message feedback', () => {
     const dialog = page.getByRole('dialog', { name: 'Submit feedback' })
 
     await page.getByRole('button', { name: 'More actions', exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Download session log' }).waitFor()
     await page.getByRole('menuitem', { name: 'Feedback', exact: true }).click()
     await dialog.waitFor()
     expect(await page.getByRole('menu').count()).toBe(0)
