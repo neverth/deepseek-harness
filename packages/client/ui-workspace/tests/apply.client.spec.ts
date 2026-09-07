@@ -71,6 +71,9 @@ async function bench(access: 'fake' | 'static' = 'fake') {
   ctx.provide('contextMenus', { register: menuRegistry.register.bind(menuRegistry), resolve: menuRegistry.resolve.bind(menuRegistry), active: createSnapshotStore(null), open: vi.fn(), close: vi.fn() } as never)
   ctx.provide('uiConversation', {})
   const status = provideSessionStatus(ctx)
+  // The row acknowledgement control writes through the Session status service.
+  const acknowledgeCompletion = vi.fn()
+  Object.assign(status, { acknowledgeCompletion })
   await ctx.plugin(SlotRegistry).await()
   const accessSource = vi.fn((_kind: string, _id: string, _action: string): HostObservable<boolean> => ALLOWED)
   const stopGuard = vi.fn()
@@ -172,6 +175,7 @@ async function bench(access: 'fake' | 'static' = 'fake') {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, rename, commands, accessSource,
     whenResourceAccess, stopGuard, status,
     retain, using, selectPanel, search, renameSession, binding, fork, pickDirectory, pinSession, unpinSession,
+    acknowledgeCompletion,
     workspacesSubscribe, initializeDefault, history, scope, sessionOf,
     setWorkspaces: (snapshot: WorkspaceSnapshot): void => { workspaceSnapshot = snapshot },
     setSessions: (snapshot: SessionListState): void => { sessionSnapshot = snapshot },

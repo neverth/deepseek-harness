@@ -6,7 +6,6 @@ import type {} from '@deepseek-ai/dsh-api-remote-access/client'
 // Type-only: declares the `sessions` Controller service.
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionReadFrame } from '../types.ts'
-import { installReadingAcknowledgements } from './acknowledge.ts'
 import type { UiSessionStatus } from './status.ts'
 
 type SessionReadBaseline = Extract<SessionReadFrame, { type: 'baseline' }>
@@ -15,7 +14,7 @@ type SessionReadChange = Extract<SessionReadFrame, { type: 'changed' }>
 const CARRIER_LOST: RemoteStreamCarrierFailure['code'] = 'gateway/carrier-lost'
 
 /**
- * Follow Host reading records into the status table's reading model and acknowledge reading in the visible main view.
+ * Follow Host reading records into the status table's reading model for explicit reading marks.
  * The stream runs only while the current Peer may follow it, so a LiveShare viewer opens no stream and keeps
  * `readingReady` false; carrier reconnection replaces the complete reading baseline.
  * @param ctx - Client root context with `remote`, `remoteAccess`, and `sessions`.
@@ -23,7 +22,6 @@ const CARRIER_LOST: RemoteStreamCarrierFailure['code'] = 'gateway/carrier-lost'
  */
 export function installReading(ctx: Context, status: UiSessionStatus): void {
   const reading = status.reading
-  installReadingAcknowledgements(ctx, ctx.sessions, reading)
   // Each access grant runs one stream. Disposal stops failure reports and carrier retries at once, but a frame
   // already handed to the consumer can still arrive, so a revoked or superseded stream's frames are discarded.
   let active: object | undefined

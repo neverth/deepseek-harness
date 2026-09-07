@@ -282,14 +282,20 @@ interface SessionStatus {
   label: string
   /** Compact text that replaces the Session row's update time. */
   trailingLabel?: string
+  /** The main view already consumed the reminder; only an explicit click clears it. */
+  ack?: true
 }
 
 /**
  * Session status presentation; pending interaction is primary and live activity
- * outranks completion reminders.
+ * outranks completion reminders, which stay visible until the user acknowledges
+ * the one an open already consumed.
  */
 function sessionStatuses(
-  node: Pick<SessionNode, 'pendingInteraction' | 'running' | 'runningSubagentCount' | 'completed' | 'failed'>,
+  node: Pick<
+    SessionNode,
+    'pendingInteraction' | 'running' | 'runningSubagentCount' | 'completed' | 'failed' | 'awaitingAck'
+  >,
   t: RowTranslate,
 ): readonly [SessionStatus, ...SessionStatus[]] {
   const subagents: SessionStatus | undefined = node.runningSubagentCount === 0
@@ -332,23 +338,58 @@ function sessionStatuses(
   }
   const completion: SessionStatus = node.failed
     ? { state: 'error', label: t('status.failed') }
-    : { state: 'done', label: t('status.unread') }
-  const unread: SessionStatus[] = node.completed ? [completion] : []
-  if (pending !== undefined) return subagents === undefined ? [pending, ...unread] : [pending, subagents, ...unread]
+    : { state: 'done', label: t('status.completed') }
+  if (pending !== undefined) return subagents === undefined ? [pending] : [pending, subagents]
   if (node.running) {
     const primary: SessionStatus = { state: 'ongoing', label: t('status.running') }
-    return subagents === undefined ? [primary, ...unread] : [primary, subagents, ...unread]
+    return subagents === undefined ? [primary] : [primary, subagents]
   }
-  if (subagents !== undefined) return [subagents, ...unread]
+  if (subagents !== undefined) return [subagents]
   if (node.completed) return [completion]
+  // The open cleared the stop marker as read; the row holds the confirmation
+  // until the user dismisses it, so a mis-click cannot drop the reminder.
+  if (node.awaitingAck) return [{ state: 'warning', label: t('status.read'), ack: true }]
   return [{ state: 'idle', label: t('status.idle') }]
 }
 
-/** Primary status dot plus every status's screen-reader label, shared by the search and session rows. */
-function SessionStatusDots({ statuses }: { statuses: readonly [SessionStatus, ...SessionStatus[]] }) {
+/** Row marker: solid states paint the row's own 11px core, ongoing keeps the shared spinner. */
+function StatusMarker({ state }: { state: StateDotState }) {
+  return state === 'ongoing'
+    ? <StateDot state={state} />
+    : <span className={css.statusDot} data-state={state} aria-hidden="true" />
+}
+
+/** Completion reminder the main view consumed: the marker itself clears it. */
+function AcknowledgeDot({ sessionId, onAcknowledge, t }: {
+  sessionId: SessionNode['id']
+  onAcknowledge: (id: SessionNode['id']) => void
+  t: RowTranslate
+}) {
+  return (
+    <Tooltip label={t('status.read')} portal>
+      <button
+        type="button"
+        className={css.ackDot}
+        aria-label={t('status.markRead.aria')}
+        onClick={(e) => { e.stopPropagation(); onAcknowledge(sessionId) }}
+      />
+    </Tooltip>
+  )
+}
+
+/** Primary status marker plus every status's screen-reader label, shared by the search and session rows. */
+function SessionStatusDots({ sessionId, statuses, onAcknowledge, t }: {
+  sessionId: SessionNode['id']
+  statuses: readonly [SessionStatus, ...SessionStatus[]]
+  onAcknowledge?: ((id: SessionNode['id']) => void) | undefined
+  t: RowTranslate
+}) {
+  const primary = statuses[0]
   return (
     <>
-      <StateDot state={statuses[0].state} />
+      {primary.ack === true && onAcknowledge !== undefined
+        ? <AcknowledgeDot sessionId={sessionId} onAcknowledge={onAcknowledge} t={t} />
+        : <StatusMarker state={primary.state} />}
       {statuses.map(status => (
         <span className={css.visuallyHidden} key={status.label}>{status.label}</span>
       ))}
@@ -417,16 +458,18 @@ function SessionHoverContent({ node, cwd, now, renderSlot, t }: {
  * @param props.onUnarchive - unarchive an archived result row.
  * @param props.useSessionAccess - the browser root's Session access Hook; the restore control
  * appears only while the snapshot allows `workspace/unarchiveSession` for that Session.
+ * @param props.onAcknowledge - clear a completion reminder the user confirmed.
  * @param props.t - Workspace-browser translation seat.
  * @returns the result row.
  */
 export function SearchResultItem({
-  result, currentId, onOpen, onUnarchive, useSessionAccess, t,
+  result, currentId, onOpen, onUnarchive, onAcknowledge, useSessionAccess, t,
 }: {
   result: SearchResultNode
   currentId: string | undefined
   onOpen: (id: SearchResultNode['id']) => void
   onUnarchive: (id: SearchResultNode['id']) => void
+  onAcknowledge: (id: SearchResultNode['id']) => void
   t: RowTranslate
 } & Pick<WorkspaceBrowserProps, 'useSessionAccess'>) {
   const selected = result.id === currentId
@@ -447,7 +490,12 @@ export function SearchResultItem({
             archived look. */}
         <span className={css.slot}>
           {!result.archived && primaryStatus.state !== 'idle' && (
-            <SessionStatusDots statuses={statuses} />
+            <SessionStatusDots
+              sessionId={result.id}
+              statuses={statuses}
+              onAcknowledge={onAcknowledge}
+              t={t}
+            />
           )}
         </span>
         <span className={css.searchResultTitle}>{result.title || t('session.untitled')}</span>
@@ -504,7 +552,7 @@ export function SearchResultItem({
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRenameRequest, renderSlot, renderFactorySlot, useContextMenuTarget,
+  node, currentId, now, onOpen, onRenameRequest, onAcknowledge, renderSlot, renderFactorySlot, useContextMenuTarget,
   useContextMenu, onReveal, drag, home, useSessionAccess, t,
 }: {
   useContextMenu: WorkspaceBrowserProps['useContextMenu']
@@ -514,9 +562,11 @@ export function SessionNodeItem({
   currentId: string | undefined
   now: number
   onOpen: (id: SessionNode['id']) => void
+  /** Clear a completion reminder the user confirmed. */
+  onAcknowledge: (id: SessionNode['id']) => void
   /** Open the rename dialog from a title double-click (id + current title); see the function JSDoc for the press precondition. */
   onRenameRequest: (id: SessionNode['id'], currentTitle: string) => void
-  /** Scroll this row into view after search navigation, then acknowledge it. */
+  /** Scroll this row into view after search navigation, then release the reveal request. */
   onReveal?: (() => void) | undefined
   /** Present on reorderable-list rows so every row can remain a drop target. */
   drag?: RowDragProps | undefined
@@ -607,35 +657,49 @@ export function SessionNodeItem({
         }}
     >
       {/* Pending interaction and own or descendant activity outrank the
-          unread reminder, which returns after activity stops
-          and clears after the visible content is acknowledged. Archived rows keep the slot
+          finished-but-unviewed reminder, which returns after activity stops;
+          opening the session downgrades that reminder to the acknowledgement
+          the marker itself carries. Archived rows keep the slot
           blank — the grayed row carries the archived look — and their live
           status stays on the hover card only. */}
       <span className={css.slot}>
         {!row.archived && !row.blank && (showStatus
-          ? <SessionStatusDots statuses={statuses} />
+          ? <SessionStatusDots
+            sessionId={node.id}
+            statuses={statuses}
+            onAcknowledge={onAcknowledge}
+            t={t}
+          />
           : renderSlot('sidebar.session.row.leading', { sessionId: node.id }))}
       </span>
-      <MarqueeText
-        ref={titleRef}
-        className={css.title}
-        onMouseDown={(e) => {
-          if (e.detail !== 1) return
-          renameArmed.current = true
-          // One shared function and options: repeated presses add one listener.
-          window.addEventListener('blur', disarmRename, { once: true })
-        }}
-        onDoubleClick={row.blank || !renamable
-          ? undefined
-          : (e) => {
-            e.stopPropagation()
-            if (!renameArmed.current) return
-            renameArmed.current = false
-            onRenameRequest(node.id, row.title)
+      <span className={css.text}>
+        <MarqueeText
+          ref={titleRef}
+          className={css.title}
+          onMouseDown={(e) => {
+            if (e.detail !== 1) return
+            renameArmed.current = true
+            // One shared function and options: repeated presses add one listener.
+            window.addEventListener('blur', disarmRename, { once: true })
           }}
-      >
-        {title}
-      </MarqueeText>
+          onDoubleClick={row.blank || !renamable
+            ? undefined
+            : (e) => {
+              e.stopPropagation()
+              if (!renameArmed.current) return
+              renameArmed.current = false
+              onRenameRequest(node.id, row.title)
+            }}
+        >
+          {title}
+        </MarqueeText>
+        {/* The latest prompt only: a second message's line reads as a second
+            heading under the title, so the preview stays one message, clamped
+            to the two lines the stylesheet allows. */}
+        {!row.blank && row.preview !== undefined && (
+          <span className={css.preview}>{row.preview}</span>
+        )}
+      </span>
       {/* Blank rows have no first prompt, so neither trailing details nor
           actions for existing content are available. */}
       {!row.blank && (

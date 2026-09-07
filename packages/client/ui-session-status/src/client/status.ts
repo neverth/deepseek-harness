@@ -1,6 +1,6 @@
 /** Client Session status table: running state, the effective pending interaction, and shared reading reminders. */
 import { Service, type Context } from '@deepseek-ai/cordis'
-import type { ISessions, SessionBinding, SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ISessions, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { notifySubscribers } from '@deepseek-ai/dsh-client-store'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -9,7 +9,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SessionPendingInteraction } from '@deepseek-ai/dsh-client-ui-session/client'
 // Retains ui-session's Context and Slot prop declarations for every consumer of this face.
 export type {} from '@deepseek-ai/dsh-client-ui-session/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { SessionReadModel } from './model.ts'
 
 /** Independent UI status facts for one Session identity. */
@@ -18,11 +18,10 @@ export interface SessionStatus {
   readonly running: boolean | undefined
   /** Highest-precedence domain request currently awaiting user interaction. */
   readonly pendingInteraction: SessionPendingInteraction | undefined
-  /**
-   * Host-confirmed unread completion or explicit unread mark; an unacknowledged completion of the open Session the
-   * visible, focused main view retains is not shown until the view leaves it.
-   */
+  /** Observed completion awaiting a main-view open, or an explicit unread mark. */
   readonly completionUnread: boolean
+  /** The main view opened a completion whose reminder still needs an explicit acknowledgement. */
+  readonly completionPendingAck: boolean
   /** Latest unread completion ended with an execution error this Host observed. */
   readonly completionFailed: boolean
 }
@@ -47,15 +46,14 @@ declare module '@deepseek-ai/dsh-client-ui-session/client' {
 
 /**
  * Session status table provided as the `uiSession.sessionStatus` service and read as `ctx.uiSession.sessionStatus`.
- * Completion reminders come from the Host reading records shared by every Client of one Host; the
+ * Completion reminders persist in this browser; explicit reading marks are shared by Clients of one Host. The
  * [package reference](../../README.md#use-this-package) states when each field is set and cleared.
  */
 export class UiSessionStatus extends Service implements HostObservable<SessionStatusSnapshot> {
   private readonly running = new Map<SessionId, boolean>()
+  private readonly completionUnread = new Set<SessionId>(loadReminderIds(UNREAD_KEY))
+  private readonly completionPendingAck = new Set<SessionId>(loadReminderIds(PENDING_ACK_KEY))
   private statusSnapshot: SessionStatusSnapshot = new Map()
-  private viewedBinding: SessionBinding | undefined
-  private viewedOpenState: string | undefined
-  private releaseViewed = (): void => {}
   private readonly statusListeners = new Set<() => void>()
   /**
    * Package-internal Client copy of the Host reading records, which the reading installer follows into.
@@ -89,15 +87,12 @@ export class UiSessionStatus extends Service implements HostObservable<SessionSt
       })
       const disposePending = pendingInteractions.subscribe(() => { this.publishStatus() })
       const disposeReading = reading.state.subscribe(() => { this.publishStatus() })
-      const disposeView = watchViewVisibility(() => { this.publishStatus() })
       this.reconcileStatus()
       return () => {
         disposeStatus()
         disposeRemoteStatus()
         disposePending()
         disposeReading()
-        disposeView()
-        this.releaseViewed()
       }
     }, 'session-status: Session status table')
   }
@@ -126,10 +121,54 @@ export class UiSessionStatus extends Service implements HostObservable<SessionSt
    */
   async mark(sessionId: SessionId, unread: boolean): Promise<void> {
     await this.reading.mark(sessionId, unread)
+    if (unread) {
+      this.completionUnread.add(sessionId)
+      this.completionPendingAck.delete(sessionId)
+      this.persistReminders()
+      this.publishStatus()
+    } else {
+      this.clearCompletion(sessionId)
+    }
+  }
+
+  /**
+   * Clear a completion reminder after the user explicitly confirms it.
+   * @param sessionId - Session identity whose reminder the user dismissed.
+   */
+  acknowledgeCompletion(sessionId: SessionId): void {
+    if (this.reading.state.getSnapshot().items[sessionId]?.manualUnread) {
+      void this.mark(sessionId, false).catch((error: unknown) => {
+        console.error('[session-status] Reading acknowledgement could not be confirmed. Retry the mark:', error)
+      })
+      return
+    }
+    this.clearCompletion(sessionId)
+  }
+
+  private clearCompletion(sessionId: SessionId): void {
+    const unread = this.completionUnread.delete(sessionId)
+    const pending = this.completionPendingAck.delete(sessionId)
+    if (!unread && !pending) return
+    this.persistReminders()
+    this.publishStatus()
+  }
+
+  private persistReminders(): void {
+    saveReminderIds(UNREAD_KEY, this.completionUnread)
+    saveReminderIds(PENDING_ACK_KEY, this.completionPendingAck)
   }
 
   private observeRunning(sessionId: SessionId, running: boolean): void {
+    const previous = this.running.get(sessionId)
+    const beforeBaseline = this.sessions.list.getSnapshot().phase === 'pending'
     this.running.set(sessionId, running)
+    if (running) {
+      this.completionUnread.delete(sessionId)
+      this.completionPendingAck.delete(sessionId)
+    } else if (previous === true || (previous === undefined && beforeBaseline)) {
+      this.completionUnread.add(sessionId)
+    }
+    this.persistReminders()
     this.publishStatus()
   }
 
@@ -143,55 +182,48 @@ export class UiSessionStatus extends Service implements HostObservable<SessionSt
       if (previous === undefined) this.running.set(id, row.running)
       else if (previous !== row.running) this.observeRunning(id, row.running)
     }
-    if (list.phase === 'ready') {
-      for (const id of this.running.keys()) {
-        if (present.has(id)) continue
-        this.running.delete(id)
+    for (const id of present) {
+      if ((list.byId[id]?.retainedBy.mainView ?? 0) > 0 && this.completionUnread.delete(id)) {
+        this.completionPendingAck.add(id)
       }
     }
-    this.followMainView(list)
+    if (list.phase === 'ready') {
+      const tracked = new Set<SessionId>([
+        ...this.running.keys(), ...this.completionUnread, ...this.completionPendingAck,
+      ])
+      for (const id of tracked) {
+        if (present.has(id)) continue
+        this.running.delete(id)
+        this.completionUnread.delete(id)
+        this.completionPendingAck.delete(id)
+      }
+    }
+    this.persistReminders()
     this.publishStatus()
-  }
-
-  /** Follow the main-view Session's binding, whose open state decides whether its natural reminder is hidden. */
-  private followMainView(list: SessionListState): void {
-    const id = Object.values(list.byId).find(row => (row.retainedBy.mainView ?? 0) > 0)?.id
-    const binding = id === undefined ? undefined : this.sessions.binding(id)
-    if (binding === this.viewedBinding) return
-    this.releaseViewed()
-    this.viewedBinding = binding
-    this.viewedOpenState = binding?.session.getSnapshot().openState
-    // Session snapshots change with every streamed event; only the open state affects the table.
-    this.releaseViewed = binding?.session.subscribe(() => {
-      const openState = binding.session.getSnapshot().openState
-      if (openState === this.viewedOpenState) return
-      this.viewedOpenState = openState
-      this.publishStatus()
-    }) ?? (() => {})
   }
 
   private publishStatus(): void {
     const pending = this.pendingInteractions.getSnapshot()
     const reading = this.reading.state.getSnapshot().items
     const list = this.sessions.list.getSnapshot()
-    // The visible, focused main view acknowledges its open Session's completions; hiding them meanwhile avoids a flash.
-    const viewing = viewVisible() && this.viewedOpenState === 'open' ? this.viewedBinding?.sessionId : undefined
     const ids = new Set<SessionId>([
       ...(Object.keys(list.byId) as SessionId[]),
       ...this.running.keys(),
       ...pending.keys(),
+      ...this.completionUnread,
+      ...this.completionPendingAck,
       ...(Object.keys(reading) as SessionId[]),
     ])
     const next = new Map<SessionId, SessionStatus>()
     for (const id of ids) {
       const record = reading[id]
-      const unread = record !== undefined
-        && (record.manualUnread || (id !== viewing && record.completedTurn > record.readTurn))
+      const unread = this.completionUnread.has(id) || record?.manualUnread === true
       next.set(id, {
         running: this.running.get(id),
         pendingInteraction: pending.get(id),
         completionUnread: unread,
-        completionFailed: unread && record.failed,
+        completionPendingAck: this.completionPendingAck.has(id),
+        completionFailed: unread && record?.failed === true,
       })
     }
     if (sameSessionStatus(this.statusSnapshot, next)) return
@@ -200,25 +232,39 @@ export class UiSessionStatus extends Service implements HostObservable<SessionSt
   }
 }
 
-/** Whether the page is visible and focused; without a document there is no view. */
-function viewVisible(): boolean {
-  return typeof document !== 'undefined' && document.visibilityState === 'visible' && document.hasFocus()
+const UNREAD_KEY = 'dsh.session-completion-unread.v1'
+const PENDING_ACK_KEY = 'dsh.session-completion-pending-ack.v1'
+
+/**
+ * Read stored completion reminders; unavailable or damaged storage has no reminders.
+ * @param key - browser storage key holding a Session identity array.
+ * @returns stored Session identities.
+ */
+function loadReminderIds(key: string): readonly SessionId[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw === null) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((value): value is string => typeof value === 'string' && value !== '').map(SessionId)
+  } catch (_storageFailed) {
+    // A blocked or corrupt store must not prevent the Session list from loading.
+    return []
+  }
 }
 
 /**
- * Report page visibility and window focus changes.
- * @param changed - called after each change.
- * @returns removes the listeners; a no-op without a document.
+ * Mirror a reminder set without making browser storage a prerequisite for the UI.
+ * @param key - browser storage key holding a Session identity array.
+ * @param ids - Session identities to store.
  */
-function watchViewVisibility(changed: () => void): () => void {
-  if (typeof document === 'undefined') return () => {}
-  document.addEventListener('visibilitychange', changed)
-  window.addEventListener('focus', changed)
-  window.addEventListener('blur', changed)
-  return () => {
-    document.removeEventListener('visibilitychange', changed)
-    window.removeEventListener('focus', changed)
-    window.removeEventListener('blur', changed)
+function saveReminderIds(key: string, ids: Iterable<SessionId>): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(key, JSON.stringify([...ids]))
+  } catch (_storageFailed) {
+    // A private or full store leaves the current in-memory reminders usable.
   }
 }
 
@@ -230,6 +276,7 @@ function sameSessionStatus(left: SessionStatusSnapshot, right: SessionStatusSnap
       || candidate.running !== status.running
       || candidate.pendingInteraction !== status.pendingInteraction
       || candidate.completionUnread !== status.completionUnread
+      || candidate.completionPendingAck !== status.completionPendingAck
       || candidate.completionFailed !== status.completionFailed) return false
   }
   return true

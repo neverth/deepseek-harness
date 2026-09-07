@@ -25,8 +25,10 @@ import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { TurnOutlineEntry, TurnOutlineState } from './types.ts'
 
-/** Prompt budget: one rail-card line (13px over ~276px), ASCII worst case included. */
-const PROMPT_PREVIEW_LIMIT = 50
+/* Prompt budget: the widest two-line surface — the sidebar row's two 11px
+   lines at the 420px maximum sidebar width, ASCII worst case included. The
+   rail's single line clips whatever this exceeds. */
+const PROMPT_PREVIEW_LIMIT = 120
 /** Response budget: three rail-card lines (12px over ~276px). */
 const RESPONSE_PREVIEW_LIMIT = 120
 
@@ -84,6 +86,11 @@ const EMPTY_OUTLINE: TurnOutlineState = { turns: [], draft: '' }
 /** The `turnOutline` unit registered on `ctx.sessionProjections` (exported for the unit spec). */
 export const turnOutlineProjectionDefinition = {
   key: 'turnOutline',
+  // Stays 2 across the prompt-budget widening: a row folded at 50 characters
+  // is a shorter preview, not a wrong one, and bumping the version would
+  // invalidate every stored row at once — the sidebar serves cold rows from
+  // this cache alone, so those previews would stay blank until each session
+  // was restored. Rows folded from here on carry the wider budget.
   stateVersion: 2,
   stateSchema: turnOutlineStateSchema,
   init: () => EMPTY_OUTLINE,
