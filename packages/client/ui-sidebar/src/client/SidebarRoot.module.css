@@ -335,8 +335,8 @@
   display: flex;
 }
 
-/* Deployment switch: two equal-width buttons above the footer actions. On the
-   rail they stack, because 56px cannot hold both side by side. */
+/* Deployment switch: equal-width buttons above the footer actions. On the rail
+   they stack, because 56px cannot hold them side by side. */
 .deployments {
   flex: none;
   display: flex;
@@ -350,7 +350,10 @@
   flex: 1;
   min-width: 0;
   height: 28px;
-  padding: 0 8px;
+  /* Three buttons share the column width, so the padding stays tight and the
+     label is clipped rather than wrapped — wrapping would break the 28px row. */
+  padding: 0 2px;
+  overflow: hidden;
   border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 6px;
   background: var(--dsw-alias-button-floating-fill);

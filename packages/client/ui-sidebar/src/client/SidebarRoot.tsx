@@ -35,12 +35,14 @@ const COLLAPSE_SETTLE_MS = 150
 const SCROLLBAR_LINGER_MS = 2000
 
 /**
- * The two local dsh deployments this build offers a one-click switch between,
- * in sidebar order. Both are reached on the development host's LAN address:
- * 3082 is the proxy that forwards to the Mac instance, 3080 is the
- * development host's own instance.
+ * The local dsh deployments this build offers a one-click switch between, in
+ * sidebar order. `local` is the loopback address of the instance on this
+ * machine — the only one browsers treat as a secure context, so it carries no
+ * "not secure" marker. The other two reach the development host's LAN
+ * address: 3082 proxies to the Mac instance, 3080 is that host's own.
  */
 const DEPLOYMENTS = [
+  { name: 'local', url: 'http://localhost:3080/' },
   { name: '3080', url: 'http://10.37.242.122:3080/' },
   { name: '3082', url: 'http://10.37.242.122:3082/' },
 ] as const
