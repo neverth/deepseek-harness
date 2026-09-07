@@ -173,6 +173,43 @@ export function ConversationRoot({
     return () => { document.removeEventListener('keydown', onKeyDown) }
   }, [composerOpen])
 
+  // iOS Safari zooms the page in when focus lands on a control whose font is
+  // under 16px, and never zooms back out. The composer's draft font follows a
+  // user preference that is 14px by default, so the fix is to refuse the zoom
+  // rather than to force the font up: `maximum-scale=1` while a control holds
+  // focus, restored on blur so pinch-zoom stays available for reading.
+  //
+  // The clamp has to be in place *before* focus, and Safari only re-reads the
+  // tag on the next focus, so this listens on the capture phase of focusin —
+  // which runs before the control's own focus handling.
+  useEffect(() => {
+    if (!mobile) return
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]')
+    if (meta === null) return
+    const resting = meta.content
+    const clamp = (event: FocusEvent): void => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      // The composer is a contenteditable div, the settings fields are inputs.
+      // Read the attribute rather than `isContentEditable`: the property is a
+      // rendering-dependent one that jsdom leaves undefined, so the attribute
+      // is what both a browser and the test see.
+      const editable = target.getAttribute('contenteditable')
+      const typing = (editable !== null && editable !== 'false')
+        || ['INPUT', 'TEXTAREA'].includes(target.tagName)
+      if (!typing) return
+      meta.content = `${resting}, maximum-scale=1`
+    }
+    const release = (): void => { meta.content = resting }
+    document.addEventListener('focusin', clamp, true)
+    document.addEventListener('focusout', release, true)
+    return () => {
+      document.removeEventListener('focusin', clamp, true)
+      document.removeEventListener('focusout', release, true)
+      meta.content = resting
+    }
+  }, [mobile])
+
   // Publishes the two live measurements floating View chrome reads off the
   // scroll body: the seat's height as --dsh-composer-height, so controls clear
   // the composer as it grows, and the scrollport's own height as

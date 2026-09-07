@@ -439,6 +439,53 @@ describe('ConversationRoot resident composer', () => {
     expect(b.slotCalls).toContain('conversation.session.header.utilities')
   })
 
+  it('clamps the viewport scale while a mobile control holds focus', () => {
+    const meta = document.createElement('meta')
+    meta.name = 'viewport'
+    meta.content = 'width=device-width, initial-scale=1'
+    document.head.appendChild(meta)
+    const width = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { value: 500, configurable: true })
+    try {
+      const b = mount(sessionSnapshotOf())
+      const box = b.view.getByRole('textbox')
+      // iOS zooms in on a sub-16px control and never zooms back, so the clamp
+      // has to be in place before focus and gone again after it.
+      expect(meta.content).toBe('width=device-width, initial-scale=1')
+      fireEvent.focusIn(box)
+      expect(meta.content).toBe('width=device-width, initial-scale=1, maximum-scale=1')
+      fireEvent.focusOut(box)
+      expect(meta.content).toBe('width=device-width, initial-scale=1')
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: width, configurable: true })
+      meta.remove()
+    }
+  })
+
+  it('leaves the viewport scale alone outside the mobile regime', () => {
+    const meta = document.createElement('meta')
+    meta.name = 'viewport'
+    meta.content = 'width=device-width, initial-scale=1'
+    document.head.appendChild(meta)
+    try {
+      // The regime follows the measured column and jsdom reports 0 for every
+      // offsetWidth, so a desktop column has to be staged explicitly.
+      const measured = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')
+      Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { value: 1200, configurable: true })
+      try {
+        const b = mount(sessionSnapshotOf())
+        fireEvent.focusIn(b.view.getByRole('textbox'))
+        // A desktop reader keeps pinch-zoom while typing.
+        expect(meta.content).toBe('width=device-width, initial-scale=1')
+      } finally {
+        if (measured === undefined) Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth')
+        else Object.defineProperty(HTMLElement.prototype, 'offsetWidth', measured)
+      }
+    } finally {
+      meta.remove()
+    }
+  })
+
   it('sticky composer seat wraps the whole overlay chain, not only the fallback stack', () => {
     const b = mount(sessionSnapshotOf(), undefined, undefined, { overlayTakeover: true })
     const seat = b.view.container.querySelector('[data-composer-seat]')
