@@ -259,6 +259,8 @@ export type WorkspaceBrowserInjected = {
   requestSessionRename: (sessionId: SessionId, currentTitle: string) => void
   /** Tell the user an archived row cannot be opened (a click on it). */
   notifyArchivedNotOpenable: () => void
+  /** Clear the completion reminder the main view already consumed for one Session. */
+  acknowledgeCompletion: (sessionId: SessionId) => void
   /** Rename a Host Workspace (rejects on name conflict; resolves on durability). */
   renameWorkspace: (workspaceId: WorkspaceId, title: string) => Promise<void>
   /** Delete only a Host Workspace registration; directory and Session logs remain. */

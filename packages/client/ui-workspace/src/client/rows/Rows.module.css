@@ -106,14 +106,42 @@
   height: 20px;
 }
 
-/* Session cell (figma): pad 8, a 16px status slot, then a 4px title gap. */
+/* Session cell (figma): pad 8, a 16px status slot, then a 4px title gap.
+   The cell grows past the 32px minimum once the preview lines are present. */
 .sessionRow {
-  height: 32px;
+  min-height: 32px;
   gap: 0;
 }
 
-.sessionRow .title {
+/* Title over preview: one text column between the leading slot and the
+   trailing cells, which stay vertically centered on the taller row. */
+.sessionRow .text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   margin: 0 6px 0 4px;
+  padding: 5px 0;
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* One prompt under the title, wrapped to at most two lines. The clamp keeps
+   the row from growing with the message; a projected prompt may carry an
+   unbreakable path or token, so it breaks anywhere rather than overflowing. */
+.preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .slot {
@@ -187,13 +215,9 @@
    it at a constant speed to its far edge while the pointer rests on the row,
    holds it there, and returns it to the start in one step when the pointer
    leaves. The motion is scripted frame by frame (reduced motion jumps), so no
-   scroll-behavior applies here. */
-.sessionRow .title {
-  flex: 1;
-}
-
-/* While the marquee travels, both clipping edges fade in over 12px instead of
-   hard-cutting a character: the left once the title has moved off its start
+   scroll-behavior applies here. While the marquee travels, both clipping edges
+   fade in over 12px instead of hard-cutting a character: the left once the
+   title has moved off its start
    (data-scrolled), the right while text still remains beyond the cell
    (data-clipped) — at the far edge the right fade lifts so the final character
    reads at full strength. The mask rides the title span itself, so the status
@@ -242,6 +266,7 @@
    over the sidebar fill). Archived search rows drop their meta line to the
    same step so both lines read as one unit. */
 .sessionRow.archived .title,
+.sessionRow.archived .preview,
 .searchResultRow.archived .searchResultTitle,
 .searchResultRow.archived .searchResultWorkspace,
 .searchResultRow.archived .searchResultSnippet {
@@ -250,6 +275,57 @@
 
 .dot {
   flex: none;
+}
+
+/* Sidebar status marker: one solid 11px core per state, larger than the 10px
+   shared StateDot slot the rest of the product uses. Ongoing keeps that shared
+   spinner, which reads as motion rather than as a sized dot. */
+.statusDot {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: currentColor;
+}
+
+.statusDot[data-state='done'] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.statusDot[data-state='warning'] {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+/* Acknowledgement control: the same 11px warning dot as a button that clears
+   the reminder, boxed to the 16x20 leading slot so it shares the marker
+   column, with a hover halo so the target reads as actionable. */
+.ackDot {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-state-warn-primary);
+  cursor: pointer;
+}
+
+.ackDot::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: currentColor;
+}
+
+.ackDot:hover::before,
+.ackDot:focus-visible::before {
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent);
 }
 
 /* Trailing action buttons surface on hover with bare 16px glyphs. */

@@ -10,7 +10,7 @@ English | [中文](README.zh.md)
 
 Use this package to expose Session catalog, retain information, and unified UI status through standard Slot hooks. It materializes per-`SessionBinding` hooks and props, while `SessionProvider` can inherit an outer binding or bind an explicit `SessionReference`. It owns process-local pending-interaction and completion-reminder policy without owning Controller transport, history, or references.
 
-Running status comes from Host list baselines or status events. Subagent catalog rows and retained subagent fallback rows do not establish running status; main view references still acknowledge completions.
+Running status comes from Host list baselines or status events. Subagent catalog rows and retained subagent fallback rows do not establish running status; a main view reference consumes a completion reminder into a pending acknowledgement that only `acknowledgeCompletion()` clears. Both reminder sets are bare Session identities mirrored to browser storage, so a page load keeps the dots this browser was showing and an acknowledgement survives one too.
 
 ## Table of Contents
 

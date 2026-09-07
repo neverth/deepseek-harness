@@ -38,6 +38,33 @@ const sessionId = (value: string): SessionId => value as SessionId
 
 const roots: Context[] = []
 
+/** Storage keys the service mirrors its two reminder sets to. */
+const UNREAD_KEY = 'dsh.session-completion-unread.v1'
+const PENDING_ACK_KEY = 'dsh.session-completion-pending-ack.v1'
+
+/**
+ * Install a Map-backed browser store over the node lane's absent `localStorage`.
+ * @returns the backing map and the restore function.
+ */
+function installStorage(): { store: Map<string, string>; restore: () => void } {
+  const store = new Map<string, string>()
+  const prior = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => { store.set(key, value) },
+    },
+  })
+  return {
+    store,
+    restore: () => {
+      if (prior === undefined) Reflect.deleteProperty(globalThis, 'localStorage')
+      else Object.defineProperty(globalThis, 'localStorage', prior)
+    },
+  }
+}
+
 function createSessionsBench(ctx: Context): SessionsBench {
   roots.push(ctx)
   let statusListener: ((id: SessionId, running: boolean) => void) | undefined
@@ -542,7 +569,7 @@ describe('UiSession status', () => {
     expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(true)
   })
 
-  it('records non-main completions and lets main-view activity acknowledge them', () => {
+  it('records every completion and downgrades a main-view open to an explicit acknowledgement', () => {
     const ctx = new Context()
     const bench = createSessionsBench(ctx)
     const id = sessionId('s1')
@@ -555,6 +582,7 @@ describe('UiSession status', () => {
       running: false,
       pendingInteraction: undefined,
       completionUnread: false,
+      completionPendingAck: false,
     })
     bench.list.update((draft) => { draft.byId[id]!.running = true })
     expect(service.sessionStatus.getSnapshot().get(id)?.running).toBe(true)
@@ -562,6 +590,9 @@ describe('UiSession status', () => {
     expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(true)
     bench.setMainView(id, 1)
     expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(false)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionPendingAck).toBe(true)
+    service.acknowledgeCompletion(id)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionPendingAck).toBe(false)
     bench.setMainView(id, 0)
 
     bench.emitStatus(id, true)
@@ -570,9 +601,15 @@ describe('UiSession status', () => {
 
     bench.setMainView(id, 1)
     expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(false)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionPendingAck).toBe(true)
     bench.emitStatus(id, true)
     bench.emitStatus(id, false)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(true)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionPendingAck).toBe(false)
+    bench.setMainView(id, 0)
+    bench.setMainView(id, 1)
     expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(false)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionPendingAck).toBe(true)
 
     bench.setMainView(id, 0)
     bench.emitStatus(id, false)
@@ -584,6 +621,35 @@ describe('UiSession status', () => {
     expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(false)
     expect(changed).toHaveBeenCalled()
     off()
+  })
+
+  it('restores both reminder sets from storage and clears one on acknowledgement', () => {
+    const storage = installStorage()
+    try {
+      const ctx = new Context()
+      const bench = createSessionsBench(ctx)
+      const unreadId = sessionId('stored-unread')
+      const ackId = sessionId('stored-ack')
+      bench.list.update((draft) => {
+        for (const id of [unreadId, ackId]) {
+          draft.byId[id] = { id, displayTitle: id, running: false, retainedBy: {}, blank: false, updatedAt: 0 }
+        }
+      })
+      storage.store.set(UNREAD_KEY, JSON.stringify([unreadId, 'session-elsewhere']))
+      storage.store.set(PENDING_ACK_KEY, JSON.stringify([ackId]))
+      const service = createUiSession(ctx, bench)
+      const status = service.sessionStatus.getSnapshot()
+      expect(status.get(unreadId)?.completionUnread).toBe(true)
+      expect(status.get(ackId)?.completionPendingAck).toBe(true)
+
+      service.acknowledgeCompletion(unreadId)
+      expect(service.sessionStatus.getSnapshot().get(unreadId)?.completionUnread).toBe(false)
+      // The sweep drops the id no session accounts for; the other set is untouched.
+      expect(JSON.parse(storage.store.get(UNREAD_KEY) ?? 'null')).toEqual([])
+      expect(JSON.parse(storage.store.get(PENDING_ACK_KEY) ?? 'null')).toEqual([ackId])
+    } finally {
+      storage.restore()
+    }
   })
 
   it('records an idle event before the initial catalog baseline and retires absent status later', () => {
@@ -598,6 +664,7 @@ describe('UiSession status', () => {
       running: false,
       pendingInteraction: undefined,
       completionUnread: true,
+      completionPendingAck: false,
     })
     bench.list.update((draft) => { draft.phase = 'ready' })
     expect(service.sessionStatus.getSnapshot().has(id)).toBe(false)

@@ -101,13 +101,23 @@ describe('WorkspaceBrowser.module.css list', () => {
     expect(declarations('.sessionOverflowButton')?.get('height')).toBe('28px')
     expect(declarations('.searchExpanded')?.get('height')).toBe('30px')
     expect(rowDeclarations('.projectRow')?.get('height')).toBe('34px')
-    expect(rowDeclarations('.sessionRow')?.get('height')).toBe('32px')
+    // The session row grows past its 32px minimum when preview lines are present.
+    expect(rowDeclarations('.sessionRow')?.get('min-height')).toBe('32px')
     // One leading status cell for every session row, grouped or flat: the cell
     // hosts either the row's status dot or the leading seat, and it reserves its
-    // own box, so the title's one shared margin below needs no per-view override.
+    // own box, so the text column's one shared margin below needs no per-view
+    // override.
     expect(rowDeclarations('.slot')?.get('width')).toBe('16px')
     expect(rowDeclarations('.slot')?.get('height')).toBe('20px')
-    expect(rowDeclarations('.sessionRow .title')?.get('margin')).toBe('0 6px 0 4px')
+    expect(rowDeclarations('.sessionRow .text')?.get('margin')).toBe('0 6px 0 4px')
+    // The preview reads one step below the title and wraps to at most two
+    // lines, so the row height stops at the clamp however long the prompt is.
+    expect(rowDeclarations('.preview')?.get('font-size')).toBe('11px')
+    expect(rowDeclarations('.preview')?.get('line-height')).toBe('15px')
+    expect(rowDeclarations('.preview')?.get('-webkit-line-clamp')).toBe('2')
+    expect(rowDeclarations('.preview')?.get('overflow')).toBe('hidden')
+    // A projected prompt may carry an unbreakable path or token.
+    expect(rowDeclarations('.preview')?.get('overflow-wrap')).toBe('anywhere')
     expect(rowDeclarations('.searchResultRow')?.get('min-height')).toBe('48px')
     expect(rowDeclarations('.sessionRow.selected')?.get('background'))
       .toBe('var(--dsw-alias-interactive-bg-hover)')
@@ -118,7 +128,8 @@ describe('WorkspaceBrowser.module.css list', () => {
     // declares no scroll-behavior; the stylesheet keeps the hovered cell
     // unclipped and fades whichever edges cut text mid-travel, on the title
     // span itself so the status slot beside it keeps its full color.
-    expect(rowDeclarations('.sessionRow .title')?.get('flex')).toBe('1')
+    // The text column owns the flex growth; the title scrolls its own overflow.
+    expect(rowDeclarations('.sessionRow .text')?.get('flex')).toBe('1')
     expect(rowDeclarations('.sessionRow .title')?.get('scroll-behavior')).toBeUndefined()
     expect(rowDeclarations('.sessionRow:hover .title')?.get('text-overflow')).toBe('clip')
     expect(rowDeclarations('.sessionRow .title[data-scrolled]')?.get('mask-image'))
