@@ -288,6 +288,8 @@ type SessionTreeProps = Pick<
   onLeaveArchivedOnly: () => void
   /** Open the rename dialog from a row title double-click. */
   onSessionRenameRequest: (sessionId: SessionNode['id'], currentTitle: string) => void
+  /** Clear a completion reminder the user confirmed. */
+  onAcknowledge: (sessionId: SessionNode['id']) => void
   /** One Session chosen from search that must be exposed and scrolled into view. */
   revealSessionId?: SessionId | undefined
   /** Acknowledge that the chosen Session row has been revealed. */
@@ -315,7 +317,7 @@ function SessionTree({
   list, useSessionStatus, startSession, open, workspaces, ungroupedSessionIds,
   rowState, onLeaveArchivedOnly,
   workspaceReady, animationResetKey, usePanelInfo, useRemoteAccess, useSessionAccess, useWorkspaceAccess,
-  onSessionRenameRequest,
+  onSessionRenameRequest, onAcknowledge,
   renderSlot, renderFactorySlot, useContextMenuTarget, useContextMenu,
   insertWorkspaceBefore,
   nestWorkspaces, groupExpansion, setGroupExpanded,
@@ -616,6 +618,7 @@ function SessionTree({
               now={now}
               onOpen={open}
               onRenameRequest={onSessionRenameRequest}
+              onAcknowledge={onAcknowledge}
               renderSlot={renderSlot}
               renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
               useContextMenuTarget={useContextMenuTarget}
@@ -680,7 +683,7 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   list, sessionIds, rowState, onLeaveArchivedOnly, useSessionStatus, useSessionAccess, open, onSessionRenameRequest,
-  usePanelInfo, setSessionOrder, workspaceReady, animationResetKey,
+  onAcknowledge, usePanelInfo, setSessionOrder, workspaceReady, animationResetKey,
   revealSessionId, onSessionRevealed, renderSlot, renderFactorySlot, useContextMenuTarget, useContextMenu, home, t,
 }: Pick<
   SessionTreeProps,
@@ -688,6 +691,7 @@ function FlatList({
   | 'useSessionAccess'
   | 'open'
   | 'onSessionRenameRequest'
+  | 'onAcknowledge'
   | 'renderSlot'
   | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'
   | 'usePanelInfo'
@@ -749,6 +753,7 @@ function FlatList({
               now={now}
               onOpen={open}
               onRenameRequest={onSessionRenameRequest}
+              onAcknowledge={onAcknowledge}
               renderSlot={renderSlot}
               renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
               useContextMenuTarget={useContextMenuTarget}
@@ -800,6 +805,7 @@ function SearchResults({
   useSessionStatus,
   open,
   onUnarchive,
+  onAcknowledge,
   workspaces,
   archivedSessionIds,
   archivedFilter,
@@ -816,6 +822,8 @@ function SearchResults({
   archivedFilter: ArchivedFilter
   /** Unarchive an archived result row in place. */
   onUnarchive: (id: SessionNode['id']) => void
+  /** Clear a completion reminder the user confirmed. */
+  onAcknowledge: (id: SessionNode['id']) => void
   query: string
   remote: RemoteSearchState
   resultLimit: number
@@ -856,6 +864,7 @@ function SearchResults({
               onOpen={open}
               onUnarchive={onUnarchive}
               useSessionAccess={useSessionAccess}
+              onAcknowledge={onAcknowledge}
               t={t}
             />
           ))}
@@ -910,6 +919,7 @@ export function WorkspaceBrowser({
   open,
   requestSessionRename,
   notifyArchivedNotOpenable,
+  acknowledgeCompletion,
   renameWorkspace, useWorkspaceActionRequest, settleWorkspaceAction,
   deleteWorkspace,
   insertWorkspaceBefore,
@@ -1365,6 +1375,7 @@ export function WorkspaceBrowser({
               useSessionStatus={useSessionStatus}
               open={openSearchResult}
               onUnarchive={onSessionUnarchive}
+              onAcknowledge={acknowledgeCompletion}
               workspaces={workspaces}
               archivedSessionIds={archivedSessionIds}
               archivedFilter={archivedFilter}
@@ -1388,6 +1399,7 @@ export function WorkspaceBrowser({
                 useSessionStatus={useSessionStatus}
                 open={guardedOpen}
                 onSessionRenameRequest={requestSessionRename}
+                onAcknowledge={acknowledgeCompletion}
                 renderSlot={renderSlot}
                 renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
                 useContextMenuTarget={useContextMenuTarget}
@@ -1408,6 +1420,7 @@ export function WorkspaceBrowser({
                 shortcuts={shortcuts}
                 useSessionStatus={useSessionStatus}
                 onSessionRenameRequest={requestSessionRename}
+                onAcknowledge={acknowledgeCompletion}
                 renderSlot={renderSlot}
                 renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
                 useContextMenuTarget={useContextMenuTarget}

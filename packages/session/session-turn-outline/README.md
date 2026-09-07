@@ -41,7 +41,7 @@ Mount the plugin beside the session store and the projection registry when clien
 |---|---|
 | `turn` | Host-assigned turn number from the `turn/start` payload |
 | `seq` | The turn's `turn/start` event seq — paging a window back through this seq loads the whole turn |
-| `prompt` | Preview of the turn's first human prompt (space-joined text blocks, collapsed whitespace, 50-character cap with a trailing ellipsis when clipped — one rail-card line); `''` until an eligible prompt lands |
+| `prompt` | Preview of the turn's first human prompt (space-joined text blocks, collapsed whitespace, 120-character cap with a trailing ellipsis when clipped — two sidebar lines; the rail clips it to its own one); `''` until an eligible prompt lands |
 | `response` | Preview of the turn's final text-bearing assistant message (same normalization, 120-character cap — up to three rail-card lines); `''` until the turn ends with assistant text |
 
 The wire value is the complete entry array, strictly increasing by `turn` (whole-value rule): consumers replace, never merge. Prompts fill only from `user/message` events with the human `user` source, so injected context and tool results never leak into navigation; a turn whose prompt is images-only keeps `''` and consumers label it by number. The response buffers as a draft while its turn streams and commits at `turn/end`; the change feed's raw-view identity gate keeps draft-only changes quiet, so the outline pushes at most three times per turn — boundary, prompt, settled response. Preview budgets match the chat rail's loaded-turn previews, so a turn shows the same words before and after its events load.
