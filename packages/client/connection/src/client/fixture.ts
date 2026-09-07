@@ -689,7 +689,7 @@ function fixtureSettledStream(
 /** fx-alpha history script: 60 turns (139 paging-counted messages, so one page
  *  at PAGE_MESSAGES=500 -- Load earlier is exercised by unit suites that drive
  *  `hasMore` directly, not by this log's length),
- *  mixing reasoning blocks / tool call+result / context. */ *  mixing reasoning blocks / tool call+result / context. */
+ *  mixing reasoning blocks / tool call+result / context. */
 function buildAlphaLog(): SessionEvent[] {
   const events: Record<string, unknown>[] = []
   let time = Date.now() - 3_600_000

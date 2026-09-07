@@ -30,6 +30,7 @@ export const zh = {
   'back': '返回',
   'brand.localBuild': 'DSH 本地构建',
   'nav.sessions': '任务',
+  'nav.closeDrawer': '关闭',
   'nav.input': '输入',
   'unknown': '未知',
   'none': '无',

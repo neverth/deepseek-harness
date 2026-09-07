@@ -95,7 +95,14 @@ export function registerComposerKeymap(editor: LexicalEditor, handlers: Composer
         event.preventDefault()
         return true
       }
-      return false
+      // No overlay claimed the gesture: release the editor so the composer
+      // returns to its resting single-line state. The contentEditable has
+      // no other collapse affordance, so Escape blurs it instead of leaving
+      // the box focused-but-tall (a stuck expanded box on mobile).
+      event.preventDefault()
+      editor.getRootElement()?.blur()
+      window.getSelection()?.removeAllRanges()
+      return true
     }, COMMAND_PRIORITY_CRITICAL),
     editor.registerCommand(KEY_SPACE_COMMAND, (event) => {
       if (isComposingEvent(event, recentlyComposing)) return false

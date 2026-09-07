@@ -32,6 +32,7 @@ export const en = {
   'back': 'Back',
   'brand.localBuild': 'DSH Local Build',
   'nav.sessions': 'Sessions',
+  'nav.closeDrawer': 'Close',
   'nav.input': 'Input',
   'unknown': 'Unknown',
   'none': 'None',
