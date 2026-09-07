@@ -36,6 +36,7 @@ export const en = {
   'brand.localBuild': 'DSH Local Build',
   'workspace.defaultName': 'Default workspace',
   'nav.sessions': 'Sessions',
+  'nav.closeDrawer': 'Close',
   'nav.input': 'Input',
   'unknown': 'Unknown',
   'none': 'None',

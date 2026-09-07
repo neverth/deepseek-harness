@@ -161,6 +161,41 @@ export function AppFrame({
     }
   }, [actions])
 
+  // Soft keyboard (mobile): when the keyboard is up, the layout viewport keeps
+  // its full height while the visual viewport shrinks. Pinning the frame with
+  // position:fixed fights the browser's own visual-viewport panning and locks
+  // touch scroll, so only the covered strip is reserved as bottom padding.
+  // visualViewport scroll is ignored: that event is the user panning the page.
+  const [keyboardInset, setKeyboardInset] = useState(0)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (vv === null || vv === undefined) return
+    let raf: number | null = null
+    const update = (): void => {
+      raf = null
+      if (frameRef.current === null) return
+      const width = frameRef.current.getBoundingClientRect().width
+      if (width > MOBILE_MAX) {
+        setKeyboardInset(prev => (prev === 0 ? prev : 0))
+        return
+      }
+      const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
+      setKeyboardInset(prev => (prev === inset ? prev : inset))
+    }
+    const schedule = (): void => {
+      if (raf !== null) return
+      raf = requestAnimationFrame(update)
+    }
+    vv.addEventListener('resize', schedule)
+    window.addEventListener('resize', schedule)
+    schedule()
+    return () => {
+      vv.removeEventListener('resize', schedule)
+      window.removeEventListener('resize', schedule)
+      if (raf !== null) cancelAnimationFrame(raf)
+    }
+  }, [])
+
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
   const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
   const sidebarPreference = sidebarCollapsed
@@ -290,6 +325,8 @@ export function AppFrame({
         gridTemplateColumns: mobile
           ? 'minmax(0, 1fr) 0px'
           : `${cols.sidebar}px minmax(${cols.rightbar === 0 ? 0 : CENTER_MIN}px, 1fr) minmax(0px, ${rightbarMax}px)`,
+        // Soft keyboard up (mobile): reserve the covered strip at the bottom.
+        paddingBottom: keyboardInset > 0 ? keyboardInset : undefined,
       }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-rightbar-collapsed={cols.rightbar === 0 || undefined}
@@ -344,6 +381,22 @@ export function AppFrame({
           role="presentation"
           onClick={() => { actions.toggleSidebar() }}
         />
+      )}
+      {/* Visible dismiss affordance riding above the scrim (not inside it:
+          the scrim closes on click, so a nested button would double-toggle
+          and immediately reopen the drawer). */}
+      {drawerOpen && (
+        <button
+          type="button"
+          className={css.drawerClose}
+          aria-label={t('nav.closeDrawer')}
+          onClick={() => { actions.toggleSidebar() }}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="6" y1="6" x2="18" y2="18" />
+            <line x1="18" y1="6" x2="6" y2="18" />
+          </svg>
+        </button>
       )}
       {/* The collapsed rail is fixed-width: no resize handle while closed, and
           the mobile regime has no draggable column edges at all. */}
