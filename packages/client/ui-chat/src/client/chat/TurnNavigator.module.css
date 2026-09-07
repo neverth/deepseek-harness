@@ -24,14 +24,11 @@
   /* Flush with the scrollport edge: the slot sits inside the transcript's side
      padding, so the rail gives that inset back and keeps 12px of its own. */
   right: calc(12px - (var(--dsh-composer-side-clearance) + 16px));
-  /* The dragged width, still clipped to the margin the centered transcript
-     leaves: half the container's spare width, less this rail's 12px inset and
-     a 12px gap off the column. The drag therefore widens the outline only as
-     far as the conversation can spare. */
-  width: min(
-    var(--turn-outline-width, 200px),
-    max(0px, calc((100cqw - var(--dsh-chat-content-width)) / 2 - 24px))
-  );
+  /* The dragged width, straight from the component. It already clamps the
+     gesture to a legible 120px floor and a 420px ceiling, and the container
+     query below hides the rail where the margin cannot hold even the floor —
+     so no second clamp against the transcript belongs here. */
+  width: var(--turn-outline-width, 200px);
   max-height: max(0px, calc(var(--turn-rail-band) - 48px));
   pointer-events: auto;
   transform: translateY(-50%);
