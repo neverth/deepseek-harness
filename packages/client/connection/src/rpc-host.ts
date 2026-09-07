@@ -83,11 +83,13 @@ export class HostConnectionService extends Service implements HostConnectionHand
    * @param ctx - owning Connection plugin context.
    * @param trustedHosts - deployment authorities accepted by the Host/Origin fence.
    * @param browserAuth - process token and persistent browser-session owner.
+   * @param requireBrowserAuth - false serves every Host/Origin-trusted request without a token or cookie.
    */
   constructor(
     ctx: Context,
     private readonly trustedHosts: readonly string[],
     private readonly browserAuth: BrowserAuth,
+    private readonly requireBrowserAuth: boolean = true,
   ) {
     super(ctx, 'connection')
     this.owner = ctx
@@ -129,6 +131,11 @@ export class HostConnectionService extends Service implements HostConnectionHand
   admit(request: ConnectionTrustRequest): PeerAdmission {
     if (!this.isTrusted(request)) return { rejection: 403 }
     if (this.disposed) return { rejection: 401 }
+    // This deployment treats network reachability as its access control: both
+    // instances serve one trusted LAN, and the token/cookie step turned
+    // switching between them into a manual login. With auth off, every
+    // Host/Origin-trusted request rides the shared owner Peer.
+    if (!this.requireBrowserAuth) return { peer: this.browserPeer }
     const secure = this.owner.get('webServer')?.protocol === 'https:'
     if (this.browserAuth.isAuthenticated(request, secure)) return { peer: this.browserPeer }
     const id = this.browserAuth.authenticateApi(request, secure)
@@ -191,6 +198,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
    * Authenticate an index request; native TLS listeners mint Secure cookies.
    */
   authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean {
+    if (!this.requireBrowserAuth) return true
     return this.browserAuth.authorizeIndex(request, response, this.ctx.get('webServer')?.protocol === 'https:')
   }
 

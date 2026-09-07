@@ -12,6 +12,8 @@ export const zh = {
   'navigation.label': '导航',
   'panels.more': '更多',
   'version.copied': '版本号复制成功',
+  'deployment.switch': '切换到 {name} 部署',
+  'deployment.current': '当前部署：{name}',
 } satisfies Record<string, string>
 
 /** The sidebar namespace key union. */
@@ -29,6 +31,8 @@ export const en = {
   'navigation.label': 'Navigation',
   'panels.more': 'More',
   'version.copied': 'Version copied',
+  'deployment.switch': 'Switch to the {name} deployment',
+  'deployment.current': 'Current deployment: {name}',
 } satisfies Record<SidebarKey, string>
 
 /** Japanese copy, checked against the English keys. */
@@ -43,6 +47,8 @@ export const ja = {
   'navigation.label': 'ナビゲーション',
   'panels.more': 'その他',
   'version.copied': 'バージョンをコピーしました',
+  'deployment.switch': '{name} デプロイに切り替える',
+  'deployment.current': '現在のデプロイ: {name}',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */
@@ -57,6 +63,8 @@ export const es = {
   'navigation.label': 'Navegación',
   'panels.more': 'Más',
   'version.copied': 'Versión copiada',
+  'deployment.switch': 'Cambiar al despliegue {name}',
+  'deployment.current': 'Despliegue actual: {name}',
 } satisfies Record<keyof typeof en, string>
 
 /** French dictionary, checked against the English keys. */
@@ -71,6 +79,8 @@ export const fr = {
   'navigation.label': 'Navigation',
   'panels.more': 'Plus',
   'version.copied': 'Version copiée',
+  'deployment.switch': 'Passer au déploiement {name}',
+  'deployment.current': 'Déploiement actuel : {name}',
 } satisfies Record<keyof typeof en, string>
 
 /** German dictionary, checked against the English keys. */
@@ -85,6 +95,8 @@ export const de = {
   'navigation.label': 'Navigation',
   'panels.more': 'Mehr',
   'version.copied': 'Version kopiert',
+  'deployment.switch': 'Zur Bereitstellung {name} wechseln',
+  'deployment.current': 'Aktuelle Bereitstellung: {name}',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian dictionary, checked against the English keys. */
@@ -99,6 +111,8 @@ export const ru = {
   'navigation.label': 'Навигация',
   'panels.more': 'Ещё',
   'version.copied': 'Версия скопирована',
+  'deployment.switch': 'Переключиться на развёртывание {name}',
+  'deployment.current': 'Текущее развёртывание: {name}',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese dictionary, checked against the English keys. */
@@ -113,4 +127,6 @@ export const pt = {
   'navigation.label': 'Navegação',
   'panels.more': 'Mais',
   'version.copied': 'Versão copiada',
+  'deployment.switch': 'Mudar para a implantação {name}',
+  'deployment.current': 'Implantação atual: {name}',
 } satisfies Record<keyof typeof en, string>
