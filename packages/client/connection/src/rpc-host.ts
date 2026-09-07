@@ -70,10 +70,12 @@ export class HostConnectionService extends Service implements HostConnectionHand
    * Provide the Host half over the active HTTP server.
    * @param ctx - owning Connection plugin context.
    * @param trustedHosts - deployment authorities accepted by the Host/Origin fence.
+   * @param requireBrowserAuth - false serves every Host/Origin-trusted request without a token or cookie.
    */
   constructor(
     ctx: Context,
     private readonly trustedHosts: readonly string[],
+    private readonly requireBrowserAuth: boolean = true,
   ) {
     super(ctx, 'connection')
     this.owner = ctx
@@ -88,7 +90,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
       const facts = { ...request, url: request.url.href }
       if (!this.isTrustedRequest(facts)) return { kind: 'deny', status: 403 }
       if (policy === 'anonymous') return { kind: 'allow' }
-      const admission = this.authentication.authenticate(facts)
+      const admission = this.admit(facts)
       return 'rejection' in admission
         ? { kind: 'deny', status: admission.rejection }
         : { kind: 'allow', peer: admission.peer }
@@ -117,6 +119,11 @@ export class HostConnectionService extends Service implements HostConnectionHand
   admit(request: ConnectionTrustRequest): PeerAdmission {
     if (!this.isTrustedRequest(request)) return { rejection: 403 }
     if (this.disposed) return { rejection: 401 }
+    // This deployment treats network reachability as its access control: both
+    // instances serve one trusted LAN, and the token/cookie step turned
+    // switching between them into a manual login. With auth off, every
+    // Host/Origin-trusted request rides the shared owner Peer.
+    if (!this.requireBrowserAuth) return { peer: this.browserPeer }
     return this.authentication.authenticate(request)
   }
 
