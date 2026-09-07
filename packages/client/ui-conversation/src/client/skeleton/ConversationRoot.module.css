@@ -79,8 +79,9 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
+  /* Wraps rather than clips: the current crumb below reads in full, and a long
+     title takes a second line instead of an ellipsis. */
+  flex-wrap: wrap;
 }
 
 .crumbSeg {
@@ -125,6 +126,12 @@
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
   cursor: default;
+  /* The session the reader is in reads in full. An ancestor crumb is a link to
+     somewhere else and can afford an ellipsis, but this one names the page, so
+     it takes the width it needs and wraps instead of hiding its tail. */
+  max-width: none;
+  overflow: visible;
+  white-space: normal;
 }
 
 .headerActions {

@@ -25,8 +25,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the Workspace UI navigation service merge (ctx.uiWorkspace).
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import { AgentPresetLabel } from './AgentPresetLabel.tsx'
-import type { AgentPresetLabelInjected } from './AgentPresetLabel.tsx'
 import { AgentPresetSeat } from './AgentPresetSeat.tsx'
 import type { AgentPresetSeatInjected } from './AgentPresetSeat.tsx'
 import { AgentPresetSection } from './AgentPresetSection.tsx'
@@ -115,11 +113,6 @@ export function apply(ctx: ClientContext): void {
       introduced: () => { seat.introduced() },
     })
 
-    const labelInjected = (): AgentPresetLabelInjected => ({
-      hooks: { agentPresets: controller.store },
-      load: () => controller.load(),
-    })
-
     scope.effect(() => {
       // Connecting a workspace either creates a blank session or reuses one,
       // and either way the chip's pick predates it — so the stage is applied
@@ -155,23 +148,19 @@ export function apply(ctx: ClientContext): void {
         locale: 'settings.agentPreset',
         inject: seatInjected,
       }, AgentPresetSeat)
-      const label = scope.slots.register({
-        name: 'conversation.session.header.actions',
-        id: 'agent-preset',
-        // Static session context occupies the header's leading negative-order band.
-        order: -10,
-        locale: 'settings.agentPreset',
-        inject: labelInjected,
-      }, AgentPresetLabel)
+      // The Session Header carries no preset label in this build: the preset is
+      // picked on the new-session chip above and cannot change mid-session, so
+      // repeating it over every transcript only spends header width. Restoring
+      // it is one `slots.register` on `conversation.session.header.actions`
+      // with AgentPresetLabel at order -10.
       return () => {
         stop()
         settingsMoved()
         rosterReaders.delete(readRoster)
         creatorDraft = undefined
         chip()
-        label()
       }
-    }, 'ui-agent-preset: new-session chip and header label')
+    }, 'ui-agent-preset: new-session chip')
   })
 
   const sectionInjected = (): AgentPresetSectionInjected => ({

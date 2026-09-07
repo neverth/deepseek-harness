@@ -216,6 +216,50 @@ export function expandAssistantStream(stream: readonly AssistantStreamRecord[]):
   return chunks
 }
 
+/**
+ * Name the first member `snapshotJsonValue` refuses, as `path: reason`.
+ * The rejection itself carries no location, so a durable chunk that fails
+ * validation is otherwise unidentifiable from the message alone. The walk asks
+ * `snapshotJsonValue` about each member rather than re-deriving its rules, so
+ * the diagnosis cannot disagree with the check it explains.
+ * @param value - the value snapshotJsonValue refused.
+ * @returns the offending path and reason, or a note when no single member fails.
+ */
+function diagnoseJsonLoss(value: unknown): string {
+  const describe = (current: unknown): string => {
+    if (current === null) return 'null'
+    if (Array.isArray(current)) return `array(${String(current.length)})`
+    if (typeof current !== 'object') return `${typeof current} ${String(current)}`
+    const proto: unknown = Object.getPrototypeOf(current)
+    if (proto === null) return 'null-prototype object'
+    const name = (proto as { constructor?: { name?: string } }).constructor?.name
+    return `object prototype=${name ?? String(proto)} keys=${Reflect.ownKeys(current).map(String).join(',').slice(0, 80)}`
+  }
+  const walk = (current: unknown, path: string, depth: number): string | undefined => {
+    if (snapshotJsonValue(current) !== undefined) return undefined
+    if (depth > 12) return `${path}: rejected (${describe(current)}); depth limit`
+    if (Array.isArray(current)) {
+      for (let index = 0; index < current.length; index += 1) {
+        if (!Object.prototype.hasOwnProperty.call(current, index)) return `${path}[${String(index)}]: array hole`
+        const found = walk(current[index], `${path}[${String(index)}]`, depth + 1)
+        if (found !== undefined) return found
+      }
+      return `${path}: array itself rejected (${describe(current)})`
+    }
+    if (typeof current === 'object' && current !== null) {
+      for (const key of Reflect.ownKeys(current)) {
+        if (typeof key !== 'string') return `${path}: symbol key ${String(key)}`
+        if (!Object.prototype.propertyIsEnumerable.call(current, key)) return `${path}.${key}: non-enumerable`
+        const found = walk((current as Record<string, unknown>)[key], `${path}.${key}`, depth + 1)
+        if (found !== undefined) return found
+      }
+      return `${path}: object itself rejected (${describe(current)})`
+    }
+    return `${path}: ${describe(current)}`
+  }
+  return walk(value, 'chunk', 0) ?? 'no offending member found by the diagnostic walk'
+}
+
 function validateRecord(value: unknown): AssistantStreamRecord {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new TypeError('Assistant stream record must be an object')
@@ -252,13 +296,16 @@ function validateRecord(value: unknown): AssistantStreamRecord {
       if (typeof record.chunk !== 'object'
         || record.chunk === null
         || Array.isArray(record.chunk)) {
-        throw new TypeError('Assistant stream raw chunk must be a lossless JSON object')
+        throw new TypeError(`Assistant stream raw chunk must be a lossless JSON object (not an object: ${diagnoseJsonLoss(record.chunk)})`)
       }
       let chunk: StreamChunk
       try {
         chunk = snapshotChunk(record.chunk as StreamChunk)
       } catch (error: unknown) {
-        throw new TypeError('Assistant stream raw chunk must be a lossless JSON object', { cause: error })
+        throw new TypeError(
+          `Assistant stream raw chunk must be a lossless JSON object (${diagnoseJsonLoss(record.chunk)})`,
+          { cause: error },
+        )
       }
       return deepFreeze({ type: 'chunk', time, chunk })
     }

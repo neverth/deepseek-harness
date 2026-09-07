@@ -14,8 +14,6 @@ import { RemoteError, TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { apply as settingsApply, inject as settingsInject } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-agent-preset/client'
-import { AgentPresetLabel } from '../src/client/AgentPresetLabel.tsx'
-import type { AgentPresetLabelInjected } from '../src/client/AgentPresetLabel.tsx'
 import { AgentPresetSection } from '../src/client/AgentPresetSection.tsx'
 import type { AgentPresetSectionInjected } from '../src/client/AgentPresetSection.tsx'
 import { AgentPresetSeat } from '../src/client/AgentPresetSeat.tsx'
@@ -294,7 +292,7 @@ describe('ui-agent-preset apply', () => {
     expect(calls.length - before).toBe(1)
   })
 
-  it('registers the new-session chip and the header label, and drops both on disposal', async () => {
+  it('registers the new-session chip and drops it on disposal', async () => {
     const { ctx, slots } = await bench()
     declareRoot(slots)
     const conversation = declareConversation(slots)
@@ -306,12 +304,10 @@ describe('ui-agent-preset apply', () => {
 
     const chip = slots.entries('conversation.hero.agentPreset')[0]!
     expect(chip.component).toBe(AgentPresetSeat)
-    const label = slots.entries('conversation.session.header.actions')[0]!
-    expect(label.component).toBe(AgentPresetLabel)
-    expect(label.options).toMatchObject({ id: 'agent-preset', order: -10 })
+    // This build carries no Session Header preset label.
+    expect(slots.entries('conversation.session.header.actions')).toHaveLength(0)
     await fiber.dispose()
     expect(slots.entries('conversation.hero.agentPreset')).toHaveLength(0)
-    expect(slots.entries('conversation.session.header.actions')).toHaveLength(0)
     expect(slots.entries('settings.section')).toHaveLength(0)
     conversation()
   })
@@ -464,22 +460,6 @@ describe('ui-agent-preset apply', () => {
     // switching sessions the user never picked for.
     await Promise.resolve()
     expect(calls.filter(call => call === 'select:minimal')).toHaveLength(spent)
-  })
-
-  it('loads the header label from the shared roster store', async () => {
-    const { ctx, slots } = await bench()
-    declareRoot(slots)
-    declareConversation(slots)
-    ctx.provide('conversation', {} as never)
-    ctx.provide('sessions', sessionsDouble({ byId: {} }) as never)
-    ctx.provide('uiWorkspace', uiWorkspaceDouble() as never)
-    await ctx.plugin({ inject: [...inject, 'conversation', 'sessions', 'uiWorkspace'], apply }).await()
-    const label = (slots.entries('conversation.session.header.actions')[0]!
-      .inject as unknown as () => AgentPresetLabelInjected)()
-
-    await label.load()
-
-    expect(label.hooks.agentPresets.getSnapshot().options).toEqual([{ id: 'standard', trust: 'system' }])
   })
 
   it('stages the creator preset and starts a session from the section', async () => {
