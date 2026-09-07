@@ -165,6 +165,8 @@
   justify-content: center;
   border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 50%;
+  /* The universal superellipse would otherwise reshape this circle. */
+  corner-shape: round;
   background: var(--dsw-alias-button-floating-fill);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
