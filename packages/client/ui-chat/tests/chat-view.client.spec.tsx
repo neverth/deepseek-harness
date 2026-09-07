@@ -787,7 +787,7 @@ describe('ChatView', () => {
     const h = makeHarness({}, {}, snapshot)
     const view = render(<h.ChatView {...h.props} />)
     const nav = view.getByRole('navigation', { name: '轮次导航' })
-    expect(nav.style.getPropertyValue('--turn-outline-width')).toBe('200px')
+    expect(nav.style.getPropertyValue('--turn-outline-width')).toBe('160px')
 
     const handle = nav.querySelector('[class*="handle"]') as HTMLElement
     const capture = { has: true }
@@ -797,10 +797,10 @@ describe('ChatView', () => {
     // The rail is pinned right, so travel leftwards widens it.
     fireEvent.pointerDown(handle, { pointerId: 1, clientX: 500 })
     fireEvent.pointerMove(handle, { pointerId: 1, clientX: 440 })
-    expect(nav.style.getPropertyValue('--turn-outline-width')).toBe('260px')
+    expect(nav.style.getPropertyValue('--turn-outline-width')).toBe('220px')
 
     fireEvent.pointerUp(handle, { pointerId: 1, clientX: 440 })
-    expect(localStorage.getItem('dsh.chat.turnOutlineWidth')).toBe('260')
+    expect(localStorage.getItem('dsh.chat.turnOutlineWidth')).toBe('220')
   })
 
   it('lands a jump on its turn once the paged rows commit', async () => {
