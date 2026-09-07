@@ -74,6 +74,13 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
         class="deployments"
       >
         <button
+          aria-label="Switch to the local deployment"
+          class="deployment"
+          type="button"
+        >
+          local
+        </button>
+        <button
           aria-label="Switch to the 3080 deployment"
           class="deployment"
           type="button"
@@ -487,6 +494,13 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
         class="deployments"
       >
         <button
+          aria-label="Switch to the local deployment"
+          class="deployment"
+          type="button"
+        >
+          local
+        </button>
+        <button
           aria-label="Switch to the 3080 deployment"
           class="deployment"
           type="button"
@@ -647,6 +661,13 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
       <div
         class="deployments"
       >
+        <button
+          aria-label="切换到 local 部署"
+          class="deployment"
+          type="button"
+        >
+          local
+        </button>
         <button
           aria-label="切换到 3080 部署"
           class="deployment"
