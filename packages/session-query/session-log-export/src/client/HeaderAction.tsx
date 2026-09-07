@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { Button, IconDownloadOutlineRegular, IconEllipsisOutlineRegular, IconPaperPlaneOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconEllipsisOutlineRegular, IconPaperPlaneOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { SessionLogDownloadDialog, type SessionLogDownloadDialogProps } from './Dialog.tsx'
 import type { SessionLogDownloadDialogInjected } from './Dialog.tsx'
 import css from './HeaderAction.module.css'
@@ -22,47 +22,48 @@ export interface SessionLogDownloadHeaderInjected extends SessionLogDownloadDial
 export type SessionLogDownloadHeaderProps = SessionLogDownloadDialogProps & InjectFace<SessionLogDownloadHeaderInjected>
 
 /**
- * Render the Session Header menu with download and optional feedback actions.
- * @param props - Session runtime, download controller, and localized copy.
- * @returns the persistent Header action and Session-scoped dialog.
+ * Host the export result dialog in the Session Header, plus feedback when that plugin is loaded.
+ *
+ * This build has no Header download control: `/export` is the entry point, and this seat
+ * still renders the command's result dialog. The more-actions menu appears only while
+ * feedback is available.
+ * @param props - Session runtime, download controller, feedback action, and localized copy.
+ * @returns the optional feedback menu and the Session-scoped result dialog.
  */
 export function SessionLogDownloadHeaderAction(props: SessionLogDownloadHeaderProps): ReactNode {
-  const { sessionId, useSessionLogDownload, useFeedbackAvailable, request, openFeedback, t } = props
+  const { sessionId, useFeedbackAvailable, openFeedback, t } = props
   const feedbackAvailable = useFeedbackAvailable(value => value)
-  const entry = useSessionLogDownload(state => state.bySession[String(sessionId)])
-  const busy = entry?.status === 'downloading'
   const [open, setOpen] = useState(false)
 
   return (
     <>
-      <Menu
-        open={open}
-        align="end"
-        dense
-        onClose={() => { setOpen(false) }}
-        items={[
-          { id: 'download', label: t('menu.download'), icon: <IconDownloadOutlineRegular />, disabled: busy },
-          ...feedbackAvailable ? [{ id: 'feedback', label: t('menu.feedback'), icon: <IconPaperPlaneOutlineRegular /> }] : [],
-        ]}
-        onSelect={(id) => {
-          setOpen(false)
-          if (id === 'feedback') openFeedback(sessionId)
-          else void request(sessionId)
-        }}
-        anchor={(
-          <Button
-            size="sm"
-            className={css.moreButton}
-            aria-label={t('header.more')}
-            aria-haspopup="menu"
-            aria-expanded={open}
-            aria-busy={busy}
-            onClick={() => { setOpen(value => !value) }}
-          >
-            <IconEllipsisOutlineRegular />
-          </Button>
-        )}
-      />
+      {feedbackAvailable && (
+        <Menu
+          open={open}
+          align="end"
+          dense
+          onClose={() => { setOpen(false) }}
+          items={[
+            { id: 'feedback', label: t('menu.feedback'), icon: <IconPaperPlaneOutlineRegular /> },
+          ]}
+          onSelect={() => {
+            setOpen(false)
+            openFeedback(sessionId)
+          }}
+          anchor={(
+            <Button
+              size="sm"
+              className={css.moreButton}
+              aria-label={t('header.more')}
+              aria-haspopup="menu"
+              aria-expanded={open}
+              onClick={() => { setOpen(value => !value) }}
+            >
+              <IconEllipsisOutlineRegular />
+            </Button>
+          )}
+        />
+      )}
       <SessionLogDownloadDialog {...props} />
     </>
   )

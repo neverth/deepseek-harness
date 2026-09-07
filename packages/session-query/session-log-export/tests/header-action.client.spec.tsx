@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useSyncExternalStore } from 'react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -43,67 +43,51 @@ function bench(feedbackAvailable = false) {
 afterEach(cleanup)
 
 describe('Session export Header action', () => {
-  it('opens Session feedback and closes the menu without starting a download', () => {
+  it('opens Session feedback and closes the menu without a download row', () => {
     const b = bench(true)
     fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
+    expect(b.view.queryByRole('menuitem', { name: 'Download session log' })).toBeNull()
     fireEvent.click(b.view.getByRole('menuitem', { name: 'Feedback' }))
     expect(b.openFeedback).toHaveBeenCalledWith(SID)
     expect(b.request).not.toHaveBeenCalled()
     expect(b.view.queryByRole('menu')).toBeNull()
   })
 
-  it('keeps export available without the feedback plugin', () => {
+  it('shows no Header button when the feedback plugin is absent', () => {
     const b = bench()
-    fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
-    expect(b.view.queryByRole('menuitem', { name: 'Feedback' })).toBeNull()
-    expect(b.view.getByRole('menuitem', { name: 'Download session log' })).toBeTruthy()
+    expect(b.view.queryByRole('button', { name: 'More actions' })).toBeNull()
+    expect(b.view.queryByRole('menuitem', { name: 'Download session log' })).toBeNull()
   })
 
-  it('updates the open menu when feedback becomes available, unloads, and reloads', () => {
+  it('updates the open menu when feedback becomes available and unloads', () => {
     const b = bench()
-    fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
-    expect(b.view.queryByRole('menuitem', { name: 'Feedback' })).toBeNull()
+    expect(b.view.queryByRole('button', { name: 'More actions' })).toBeNull()
 
     act(() => { b.feedback.set(true) })
+    fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
     expect(b.view.getByRole('menuitem', { name: 'Feedback' })).toBeTruthy()
     act(() => { b.feedback.set(false) })
-    expect(b.view.queryByRole('menuitem', { name: 'Feedback' })).toBeNull()
-    expect(b.view.getByRole('menuitem', { name: 'Download session log' })).toBeTruthy()
-
-    act(() => { b.feedback.set(true) })
-    fireEvent.click(b.view.getByRole('menuitem', { name: 'Feedback' }))
-    expect(b.openFeedback).toHaveBeenCalledWith(SID)
-    expect(b.request).not.toHaveBeenCalled()
+    expect(b.view.queryByRole('button', { name: 'More actions' })).toBeNull()
     expect(b.view.queryByRole('menu')).toBeNull()
   })
 
-  it('opens the more-actions menu and downloads through the shared controller', async () => {
-    const b = bench()
-    const button = b.view.getByRole('button', { name: 'More actions' })
-    expect(button.querySelector('svg')).not.toBeNull()
-    expect(button.getAttribute('aria-expanded')).toBe('false')
-    fireEvent.click(button)
-    expect(button.getAttribute('aria-expanded')).toBe('true')
-    fireEvent.click(b.view.getByRole('menuitem', { name: 'Download session log' }))
-    await waitFor(() => { expect(b.request).toHaveBeenCalledWith(SID) })
-    expect(b.view.queryByRole('menuitem', { name: 'Download session log' })).toBeNull()
-    expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
-  })
-
-  it('closes the menu on Escape without downloading', () => {
-    const b = bench()
-    fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
-    expect(b.view.getByRole('menuitem', { name: 'Download session log' })).toBeTruthy()
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(b.view.queryByRole('menuitem', { name: 'Download session log' })).toBeNull()
-    expect(b.request).not.toHaveBeenCalled()
-  })
-
-  it('disables the download row while either entry path downloads this Session', async () => {
+  it('closes the menu on Escape without opening feedback', () => {
     const b = bench(true)
-    let release!: (response: Response) => void
-    const pending = new Promise<Response>((resolve) => { release = resolve })
-    const controller = new SessionLogDownloadController(() => pending, vi.fn())
+    fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
+    expect(b.view.getByRole('menuitem', { name: 'Feedback' })).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(b.view.queryByRole('menuitem', { name: 'Feedback' })).toBeNull()
+    expect(b.openFeedback).not.toHaveBeenCalled()
+  })
+
+  it('hosts the result dialog without a Header download button', async () => {
+    const b = bench()
+    expect(b.view.queryByRole('button')).toBeNull()
+
+    const controller = new SessionLogDownloadController(
+      () => Promise.resolve(new Response('zip')),
+      vi.fn(),
+    )
     const useSessionLogDownload = bindSnapshot(controller.store)
     b.view.rerender(<SessionLogDownloadHeaderAction {...({
       sessionId: SID,
@@ -115,16 +99,7 @@ describe('Session export Header action', () => {
       t: (key: keyof typeof en): string => en[key],
     } as unknown as SessionLogDownloadHeaderProps)} />)
 
-    const download = controller.download(SID)
-    const button = b.view.getByRole('button', { name: 'More actions' })
-    await waitFor(() => { expect(button.getAttribute('aria-busy')).toBe('true') })
-    fireEvent.click(button)
-    const item = b.view.getByRole('menuitem', { name: 'Download session log' })
-    expect((item as HTMLButtonElement).disabled).toBe(true)
-    expect((b.view.getByRole('menuitem', { name: 'Feedback' }) as HTMLButtonElement).disabled).toBe(false)
-    release(new Response('zip'))
-    await download
-    await waitFor(() => { expect(button.getAttribute('aria-busy')).toBe('false') })
-    expect((item as HTMLButtonElement).disabled).toBe(false)
+    await controller.download(SID)
+    expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
   })
 })
