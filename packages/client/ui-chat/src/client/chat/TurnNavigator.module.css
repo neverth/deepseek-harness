@@ -24,9 +24,13 @@
   /* Flush with the scrollport edge: the slot sits inside the transcript's side
      padding, so the rail gives that inset back and keeps 12px of its own. */
   right: calc(12px - (var(--dsh-composer-side-clearance) + 16px));
-  /* Wide enough for a readable summary, capped against a narrow viewport so
-     the outline never eats the transcript column. */
-  width: min(200px, calc(100cqw - 720px));
+  /* Wide enough for a readable summary, but never wider than the margin the
+     centered transcript leaves: half the container's spare width, less this
+     rail's 12px inset and a 12px gap off the column. */
+  width: min(
+    200px,
+    max(0px, calc((100cqw - var(--dsh-chat-content-width)) / 2 - 24px))
+  );
   max-height: max(0px, calc(var(--turn-rail-band) - 48px));
   pointer-events: auto;
   transform: translateY(-50%);
@@ -105,9 +109,9 @@
   50% { opacity: 0.35; }
 }
 
-/* Below this the transcript column needs every pixel; the outline hides
-   rather than squeezing the conversation. */
-@container (max-width: 1080px) {
+/* Below this the margin beside the centered transcript cannot hold a legible
+   row, so the outline hides rather than squeezing the conversation. */
+@container (max-width: 900px) {
   .slot {
     display: none;
   }
