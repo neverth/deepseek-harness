@@ -15,8 +15,14 @@ interface TurnNavigatorProps {
 
 /** localStorage key for the dragged outline width preference (px). */
 const WIDTH_PREF_KEY = 'dsh.chat.turnOutlineWidth'
-/** Width the outline takes with no stored preference. */
-const DEFAULT_WIDTH = 200
+/**
+ * Width the outline takes with no stored preference. The transcript centres a
+ * 680px column in roughly 912px of chat container at an ordinary window,
+ * leaving about 116px of margin per side, so this sits a little into the
+ * transcript's empty gutter and reads as a rail over it rather than a column
+ * competing for width. The drag handle owns every choice past this one.
+ */
+const DEFAULT_WIDTH = 160
 /** Narrowest useful outline: below this a summary reads as a few characters. */
 const MIN_WIDTH = 120
 /** Widest the outline may grow, whatever the margin allows. */
