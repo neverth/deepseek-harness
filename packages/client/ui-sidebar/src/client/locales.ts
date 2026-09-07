@@ -7,6 +7,8 @@ export const zh = {
   'toggle.open': '打开侧边栏',
   'toggle.collapse': '收起侧边栏',
   'panels.label': '全局面板',
+  'deployment.switch': '切换到 {name} 部署',
+  'deployment.current': '当前部署：{name}',
 } satisfies Record<string, string>
 
 /** The sidebar namespace key union. */
@@ -19,4 +21,6 @@ export const en = {
   'toggle.open': 'Open sidebar',
   'toggle.collapse': 'Collapse sidebar',
   'panels.label': 'Global panels',
+  'deployment.switch': 'Switch to the {name} deployment',
+  'deployment.current': 'Current deployment: {name}',
 } satisfies Record<SidebarKey, string>
