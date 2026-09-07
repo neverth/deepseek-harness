@@ -71,6 +71,24 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
       class="footArea"
     >
       <div
+        class="deployments"
+      >
+        <button
+          aria-label="Switch to the 3080 deployment"
+          class="deployment"
+          type="button"
+        >
+          3080
+        </button>
+        <button
+          aria-label="Switch to the 3082 deployment"
+          class="deployment"
+          type="button"
+        >
+          3082
+        </button>
+      </div>
+      <div
         class="footerActions"
       >
         <div
@@ -466,6 +484,24 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
       class="footArea"
     >
       <div
+        class="deployments"
+      >
+        <button
+          aria-label="Switch to the 3080 deployment"
+          class="deployment"
+          type="button"
+        >
+          3080
+        </button>
+        <button
+          aria-label="Switch to the 3082 deployment"
+          class="deployment"
+          type="button"
+        >
+          3082
+        </button>
+      </div>
+      <div
         class="footerActions"
       >
         <div
@@ -608,6 +644,24 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
     <div
       class="footArea"
     >
+      <div
+        class="deployments"
+      >
+        <button
+          aria-label="切换到 3080 部署"
+          class="deployment"
+          type="button"
+        >
+          3080
+        </button>
+        <button
+          aria-label="切换到 3082 部署"
+          class="deployment"
+          type="button"
+        >
+          3082
+        </button>
+      </div>
       <div
         class="footerActions"
       >
