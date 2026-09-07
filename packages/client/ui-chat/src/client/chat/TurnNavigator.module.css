@@ -24,16 +24,54 @@
   /* Flush with the scrollport edge: the slot sits inside the transcript's side
      padding, so the rail gives that inset back and keeps 12px of its own. */
   right: calc(12px - (var(--dsh-composer-side-clearance) + 16px));
-  /* Wide enough for a readable summary, but never wider than the margin the
-     centered transcript leaves: half the container's spare width, less this
-     rail's 12px inset and a 12px gap off the column. */
+  /* The dragged width, still clipped to the margin the centered transcript
+     leaves: half the container's spare width, less this rail's 12px inset and
+     a 12px gap off the column. The drag therefore widens the outline only as
+     far as the conversation can spare. */
   width: min(
-    200px,
+    var(--turn-outline-width, 200px),
     max(0px, calc((100cqw - var(--dsh-chat-content-width)) / 2 - 24px))
   );
   max-height: max(0px, calc(var(--turn-rail-band) - 48px));
   pointer-events: auto;
   transform: translateY(-50%);
+}
+
+/* The rail's inner edge: a 8px grab strip that widens the outline leftwards.
+   It draws nothing until pointed at, so the resting rail stays a quiet
+   margin note. */
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  z-index: 1;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.handle::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--dsw-alias-border-l4);
+  content: '';
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.handle:hover::before,
+.frameDragging .handle::before {
+  opacity: 1;
+}
+
+/* A drag must not leave rows painting hover states under the moving pointer. */
+.frameDragging .row {
+  pointer-events: none;
 }
 
 /* The frame's inner scroller: no visible scrollbar, no scroll chaining into
@@ -103,6 +141,58 @@
   outline-offset: -1px;
 }
 
+/* Hover/focus preview: the fuller prompt and response for one row, opened to
+   the rail's left so it reads over the transcript's margin. --turn-preview-top
+   is the row's own offset inside the frame, clamped to keep the card between
+   the frame's ends. */
+.preview {
+  --turn-preview-height: 108px;
+
+  position: absolute;
+  top: clamp(
+    0px,
+    calc(var(--turn-preview-top, 0px) - var(--turn-preview-height) / 2),
+    max(0px, calc(100% - var(--turn-preview-height)))
+  );
+  right: calc(100% + 10px);
+  box-sizing: border-box;
+  width: min(320px, calc(100cqw - 160px));
+  max-height: var(--turn-preview-height);
+  overflow: hidden;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-elevation-panel);
+  pointer-events: none;
+  animation: dsh-turn-preview-enter 120ms ease-out;
+  transition: top 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.previewPrompt,
+.previewResponse {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+
+.previewPrompt {
+  font: var(--dsw-font-xs-strong-13);
+  -webkit-line-clamp: 2;
+}
+
+.previewResponse {
+  margin-top: 4px;
+  color: var(--dsw-alias-label-caption);
+  font: var(--dsw-font-xxs-12);
+  -webkit-line-clamp: 3;
+}
+
+@keyframes dsh-turn-preview-enter {
+  from { opacity: 0; transform: translateX(4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 @keyframes dsh-turn-row-busy {
   0%,
   100% { opacity: 1; }
@@ -120,7 +210,9 @@
 @media (prefers-reduced-motion: reduce) {
   .scroller,
   .row,
-  .rowBusy {
+  .rowBusy,
+  .handle::before,
+  .preview {
     transition: none;
     animation: none;
     scroll-behavior: auto;
