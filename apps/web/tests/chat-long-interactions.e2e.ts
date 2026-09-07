@@ -199,30 +199,18 @@ describe('web e2e: long Chat interaction contract', () => {
     const marks = turnNavigation.getByRole('button')
     await expect.poll(() => marks.count(), { timeout: 15_000 }).toBe(FIXTURE_TURNS)
     expect(await marks.last().getAttribute('aria-current')).toBe('true')
-    // The oldest turn is an unloaded mark whose outline preview already
-    // carries both the prompt and the settled response.
+    // The oldest turn is an unloaded row whose outline summary already reads
+    // without hover.
     const firstTurnButton = turnNavigation
       .getByRole('button', { name: 'Load and jump to turn 1', exact: true })
-    await firstTurnButton.focus()
-    const preview = page.getByRole('tooltip')
-    await preview.waitFor({ state: 'visible', timeout: 5_000 })
-    expect(await preview.textContent()).toContain(FIXTURE.markers.user(1))
-    expect(await preview.textContent()).toContain(FIXTURE.markers.assistant(1))
-    const firstTurnPosition = await firstTurnButton.evaluate(button => (
-      button.parentElement?.style.getPropertyValue('--turn-natural-position') ?? ''
-    ))
-    expect(firstTurnPosition).toBe('0px')
+    expect(await firstTurnButton.textContent()).toContain(FIXTURE.markers.user(1))
 
     const loadEarlier = page.getByRole('button', { name: 'Load earlier', exact: true })
     const loadedMarks = turnNavigation.getByRole('button', { name: /^Jump to turn / })
     const loadedBefore = await loadedMarks.count()
     await loadEarlier.click()
-    // Paging converts marks to their loaded form without moving the
-    // fixed-pitch ladder.
+    // Paging converts rows to their loaded form; the outline keeps its order.
     await expect.poll(() => loadedMarks.count(), { timeout: 15_000 }).toBeGreaterThan(loadedBefore)
-    expect(await firstTurnButton.evaluate(button => (
-      button.parentElement?.style.getPropertyValue('--turn-natural-position') ?? ''
-    ))).toBe(firstTurnPosition)
     // Activating the still-unloaded oldest mark pages the rest in and lands
     // on the turn's own row.
     await firstTurnButton.focus()

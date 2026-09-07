@@ -581,7 +581,7 @@ describe('ChatView', () => {
     expect(railRenders).toBe(afterMount)
   })
 
-  it('projects loaded turns into prompt and response navigation previews', () => {
+  it('projects loaded turns into standing outline rows', () => {
     const snapshot = chatSnapshotFixture({
       nodes: [
         userInTurn(1, 'first prompt', 1),
@@ -597,20 +597,16 @@ describe('ChatView', () => {
     ])
     const h = makeHarness({}, {}, snapshot)
     const view = render(<h.ChatView {...h.props} />)
-    const navigation = view.getByRole('navigation', { name: '轮次导航' })
-    expect(navigation.style.getPropertyValue('--turn-natural-height')).toBe('22px')
+    view.getByRole('navigation', { name: '轮次导航' })
     const first = view.getByRole('button', { name: '跳转到第 1 轮' })
     const second = view.getByRole('button', { name: '跳转到第 2 轮' })
-    expect(first.parentElement?.style.getPropertyValue('--turn-natural-position')).toBe('0px')
-    expect(second.parentElement?.style.getPropertyValue('--turn-natural-position')).toBe('10px')
+    // The outline stands open: each row carries its own prompt summary.
+    expect(first.textContent).toBe('first prompt')
+    expect(second.textContent).toBe('second prompt')
     expect(second.getAttribute('aria-current')).toBe('true')
-    fireEvent.focus(first)
-    const preview = view.getByRole('tooltip')
-    expect(preview.textContent).toContain('first prompt')
-    expect(preview.textContent).toContain('first response')
   })
 
-  it('jumps to a turn anchor and reflows stable marks after an older page arrives', () => {
+  it('jumps to a turn anchor and keeps its outline row after an older page arrives', () => {
     const later = [
       userInTurn(4, 'second prompt', 2), assistant(5, 'second response', 2),
       userInTurn(7, 'third prompt', 3), assistant(8, 'third response', 3),
@@ -618,8 +614,9 @@ describe('ChatView', () => {
     const h = makeHarness({ nodes: later }, { hasMore: true })
     const view = render(<h.ChatView {...h.props} />)
     const second = view.getByRole('button', { name: '跳转到第 2 轮' })
-    const secondPosition = second.parentElement as HTMLElement
-    expect(secondPosition.style.getPropertyValue('--turn-natural-position')).toBe('0px')
+    // The window opens on turn 2, so it heads the outline.
+    const rowsBefore = view.getAllByRole('button', { name: /跳转到第 \d+ 轮/u })
+    expect(rowsBefore[0]).toBe(second)
 
     const scroller = view.container.querySelector('[class*="scroll"]') as HTMLDivElement
     const metrics = installScrollMetrics(scroller, 1_000, 300)
@@ -637,10 +634,12 @@ describe('ChatView', () => {
         turnTimings: new Map([[1, { startTime: 1_000 }], [2, { startTime: 4_000 }], [3, { startTime: 7_000 }]]),
       })
     })
-    const movedSecond = view.getByRole('button', { name: '跳转到第 2 轮' })
-    expect(movedSecond.parentElement).toBe(secondPosition)
-    // Fixed pitch: the mark moves one slot down and never compresses.
-    expect(secondPosition.style.getPropertyValue('--turn-natural-position')).toBe('10px')
+    // The older page prepends turn 1; turn 2 keeps its row and slot order.
+    const rowsAfter = view.getAllByRole('button', { name: /跳转到第 \d+ 轮/u })
+    expect(rowsAfter.map(row => row.getAttribute('aria-label'))).toEqual([
+      '跳转到第 1 轮', '跳转到第 2 轮', '跳转到第 3 轮',
+    ])
+    expect(rowsAfter[1]?.textContent).toBe('second prompt')
   })
 
   it('extends the rail with unloaded outline turns, pages on click, and falls back when nothing lands', async () => {
@@ -656,10 +655,8 @@ describe('ChatView', () => {
     view.getByRole('button', { name: '加载并跳转到第 2 轮' })
     const third = view.getByRole('button', { name: '跳转到第 3 轮' })
     expect(third.getAttribute('aria-current')).toBe('true')
-    fireEvent.focus(first)
-    // An unloaded turn previews both sides from the outline.
-    expect(view.getByRole('tooltip').textContent).toContain('first prompt from outline')
-    expect(view.getByRole('tooltip').textContent).toContain('first answer from outline')
+    // An unloaded turn reads its summary from the outline, same as a loaded one.
+    expect(first.textContent).toBe('first prompt from outline')
 
     fireEvent.click(first)
     expect(h.loadThrough).toHaveBeenCalledWith(0)
@@ -721,7 +718,7 @@ describe('ChatView', () => {
     expect(first.getAttribute('aria-busy')).toBeNull()
   })
 
-  it('scrolls the fixed-pitch rail inside its frame with gradient fades at the scrollable ends', () => {
+  it('stands every outline turn up as its own readable row', () => {
     const h = makeHarness(
       { nodes: [userInTurn(8, 'latest prompt', 60), assistant(9, 'latest response', 60)] },
       { hasMore: true },
@@ -733,28 +730,17 @@ describe('ChatView', () => {
       response: '',
     })))
     const view = render(<h.ChatView {...h.props} />)
-    const nav = view.getByRole('navigation', { name: '轮次导航' })
-    // 60 marks at the fixed 10px pitch: the ladder keeps its natural height.
-    expect(nav.style.getPropertyValue('--turn-natural-height')).toBe('602px')
-    const scroller = nav.querySelector('[class*="scroller"]') as HTMLElement
-    Object.defineProperty(scroller, 'scrollHeight', { value: 602, configurable: true })
-    Object.defineProperty(scroller, 'clientHeight', { value: 300, configurable: true })
-    scroller.scrollTop = 0
-    fireEvent.scroll(scroller)
-    expect(scroller.className).toContain('fadeBottom')
-    expect(scroller.className).not.toContain('fadeTop')
-
-    scroller.scrollTop = 150
-    fireEvent.scroll(scroller)
-    expect(scroller.className).toContain('fadeTop')
-    expect(scroller.className).toContain('fadeBottom')
-    expect(nav.style.getPropertyValue('--turn-scroll-top')).toBe('150px')
-
-    // Pointer mapping subtracts the rail scroll: y=94 with scrollTop 150 is
-    // natural offset 238px → the 25th mark.
-    vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue({ top: 0 } as DOMRect)
-    fireEvent.pointerMove(nav, { clientY: 94 })
-    expect(view.getByRole('tooltip').textContent).toContain('p25')
+    view.getByRole('navigation', { name: '轮次导航' })
+    const rows = view.getAllByRole('button', { name: /(跳转到|加载并跳转到)第 \d+ 轮/u })
+    expect(rows).toHaveLength(60)
+    // Every row reads without hover, in session order.
+    expect(rows[0]?.textContent).toBe('p1')
+    expect(rows[24]?.textContent).toBe('p25')
+    // Turn 60 is loaded, so its row prefers the window's own text over the outline's.
+    expect(rows[59]?.textContent).toBe('latest prompt')
+    // The loaded tail is current; the rest page history in on click.
+    expect(rows[59]?.getAttribute('aria-current')).toBe('true')
+    expect(rows[0]?.getAttribute('aria-label')).toBe('加载并跳转到第 1 轮')
   })
 
   it('lands a jump on its turn once the paged rows commit', async () => {
