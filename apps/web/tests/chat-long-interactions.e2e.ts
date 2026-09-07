@@ -199,36 +199,19 @@ describe('web e2e: long Chat interaction contract', () => {
     const turnNavigation = page.getByRole('navigation', { name: 'Turn navigation' })
     await turnNavigation.waitFor({ state: 'visible', timeout: 15_000 })
     const marks = turnNavigation.getByRole('button')
-    await expect.poll(() => marks.last().getAttribute('aria-current'), { timeout: 15_000 }).toBe('true')
-    expect(await marks.count()).toBeLessThan(FIXTURE_TURNS)
-    // The oldest turn is an unloaded mark whose outline preview already
-    // carries both the prompt and the settled response.
+    await expect.poll(() => marks.count(), { timeout: 15_000 }).toBe(FIXTURE_TURNS)
+    expect(await marks.last().getAttribute('aria-current')).toBe('true')
+    // The oldest turn is an unloaded row whose outline summary already reads
+    // without hover.
     const firstTurnButton = turnNavigation
       .getByRole('button', { name: 'Load and jump to turn 1', exact: true })
-    const railScroller = turnNavigation.locator('[class*="scroller"]')
-    await railScroller.hover()
-    await page.mouse.wheel(0, -FIXTURE_TURNS * 10)
-    await expect.poll(() => railScroller.evaluate(element => element.scrollTop)).toBe(0)
-    await firstTurnButton.focus()
-    const preview = page.getByRole('tooltip')
-    await preview.waitFor({ state: 'visible', timeout: 5_000 })
-    await expect.poll(() => preview.textContent(), { timeout: 5_000 }).toContain(FIXTURE.markers.user(1))
-    expect(await preview.textContent()).toContain(FIXTURE.markers.assistant(1))
-    const markPitch = () => turnNavigation.getByRole('button').evaluateAll(buttons => (
-      buttons[1]!.getBoundingClientRect().top - buttons[0]!.getBoundingClientRect().top
-    ))
-    expect(await markPitch()).toBe(10)
+    expect(await firstTurnButton.textContent()).toContain(FIXTURE.markers.user(1))
 
     const loadEarlier = page.getByRole('button', { name: 'Load earlier', exact: true })
     const loadedRows = page.locator('[data-chat-flow-key]')
     const loadedBefore = await loadedRows.count()
     await loadEarlier.click()
     await expect.poll(() => loadedRows.count(), { timeout: 15_000 }).toBeGreaterThan(loadedBefore)
-    await railScroller.hover()
-    await page.mouse.wheel(0, -FIXTURE_TURNS * 10)
-    await expect.poll(() => railScroller.evaluate(element => element.scrollTop)).toBe(0)
-    await firstTurnButton.waitFor({ state: 'visible' })
-    expect(await markPitch()).toBe(10)
     // Activating the still-unloaded oldest mark pages the rest in and lands
     // on the turn's own row.
     await firstTurnButton.focus()
