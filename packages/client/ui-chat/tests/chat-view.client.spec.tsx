@@ -743,6 +743,66 @@ describe('ChatView', () => {
     expect(rows[0]?.getAttribute('aria-label')).toBe('加载并跳转到第 1 轮')
   })
 
+  it('opens the fuller preview beside a hovered outline row', () => {
+    const snapshot = chatSnapshotFixture({
+      nodes: [
+        userInTurn(1, 'first prompt', 1),
+        assistant(2, 'first response', 1),
+        userInTurn(4, 'second prompt', 2),
+        assistant(5, 'second response', 2),
+      ],
+      turnEnds: new Map([[1, 3], [2, 6]]),
+    })
+    const h = makeHarness({}, {}, snapshot)
+    const view = render(<h.ChatView {...h.props} />)
+    const first = view.getByRole('button', { name: '跳转到第 1 轮' })
+    expect(view.queryByRole('tooltip')).toBeNull()
+
+    // Hover carries the response the row itself has no room for.
+    fireEvent.pointerEnter(first)
+    const preview = view.getByRole('tooltip')
+    expect(preview.textContent).toContain('first prompt')
+    expect(preview.textContent).toContain('first response')
+    expect(first.getAttribute('aria-describedby')).toBe(preview.id)
+
+    // Keyboard reaches it too, and leaving the rail closes it.
+    fireEvent.blur(first)
+    fireEvent.focus(first)
+    expect(view.getByRole('tooltip')).toBeTruthy()
+    fireEvent.pointerLeave(view.getByRole('navigation', { name: '轮次导航' }))
+    expect(view.queryByRole('tooltip')).toBeNull()
+  })
+
+  it('drags the outline to a width it remembers', () => {
+    localStorage.removeItem('dsh.chat.turnOutlineWidth')
+    const snapshot = chatSnapshotFixture({
+      nodes: [
+        userInTurn(1, 'first prompt', 1),
+        assistant(2, 'first response', 1),
+        userInTurn(4, 'second prompt', 2),
+        assistant(5, 'second response', 2),
+      ],
+      turnEnds: new Map([[1, 3], [2, 6]]),
+    })
+    const h = makeHarness({}, {}, snapshot)
+    const view = render(<h.ChatView {...h.props} />)
+    const nav = view.getByRole('navigation', { name: '轮次导航' })
+    expect(nav.style.getPropertyValue('--turn-outline-width')).toBe('200px')
+
+    const handle = nav.querySelector('[class*="handle"]') as HTMLElement
+    const capture = { has: true }
+    handle.setPointerCapture = () => {}
+    handle.releasePointerCapture = () => { capture.has = false }
+    handle.hasPointerCapture = () => capture.has
+    // The rail is pinned right, so travel leftwards widens it.
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 500 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 440 })
+    expect(nav.style.getPropertyValue('--turn-outline-width')).toBe('260px')
+
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 440 })
+    expect(localStorage.getItem('dsh.chat.turnOutlineWidth')).toBe('260')
+  })
+
   it('lands a jump on its turn once the paged rows commit', async () => {
     const later = [userInTurn(8, 'third prompt', 3), assistant(9, 'third response', 3)]
     const h = makeHarness({ nodes: later }, { hasMore: true })
