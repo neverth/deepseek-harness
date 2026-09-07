@@ -14,15 +14,25 @@ export function assertNever(value: never, context?: string): never {
   throw new Error(`unreachable variant${context ? ` in ${context}` : ''}: ${rendered}`)
 }
 
+/**
+ * The shape ECMAScript requires of a built-in function's source text: the
+ * NativeFunction grammar fixes the `function`, name, parameter list, and
+ * `[native code]` body but leaves every run of whitespace to the engine, so
+ * V8 emits one line while JavaScriptCore breaks and indents the body. Matching
+ * the grammar instead of one engine's spacing keeps a forged `toString` out
+ * without rejecting Safari's intrinsics.
+ */
+const NATIVE_FUNCTION_SOURCE = /^function\s+([A-Za-z$_][\w$]*)\s*\(\s*\)\s*\{\s*\[native code\]\s*\}$/u
+
 /** Whether a realm-owned intrinsic prototype is backed by its native constructor. */
 function hasIntrinsicConstructor(prototype: object, name: 'Array' | 'Object'): boolean {
   const descriptor = Object.getOwnPropertyDescriptor(prototype, 'constructor')
   const constructor: unknown = descriptor?.value
   if (typeof constructor !== 'function') return false
   try {
-    return constructor.name === name
-      && constructor.prototype === prototype
-      && Function.prototype.toString.call(constructor) === `function ${name}() { [native code] }`
+    if (constructor.name !== name || constructor.prototype !== prototype) return false
+    const source = NATIVE_FUNCTION_SOURCE.exec(Function.prototype.toString.call(constructor))
+    return source !== null && source[1] === name
   } catch {
     return false
   }
