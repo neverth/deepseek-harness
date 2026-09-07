@@ -41,3 +41,5 @@ apps/web/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
+# 本机运维配置：内网地址、开发机账号、会话 cookie 签名材料，不可入库
+dsh-phone-access/
