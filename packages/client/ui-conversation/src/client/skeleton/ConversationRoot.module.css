@@ -462,6 +462,12 @@
   --dsh-composer-side-clearance: 8px;
 }
 
+/* The view switcher costs a whole row of a phone screen to reach a view that
+   wants a wide table, so the mobile regime keeps the transcript only. */
+.root[data-mobile] .tabs {
+  display: none;
+}
+
 /* Collapsed: the seat keeps its measurements (the ResizeObserver still runs)
    but takes no space and no clicks. */
 .composerSeat[data-composer-collapsed] {
