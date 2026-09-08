@@ -89,9 +89,15 @@
 
 /* The Turn header has 16px clearance from its input and following content. */
 .flowItem[data-chat-flow-kind="turn-process"],
-.flowItem[data-turn-process-answer],
 .column > [data-chat-flow-kind="turn-process"] + :not([hidden]):not(.flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty))):not(.running) {
   --dsh-chat-flow-gap: 16px;
+}
+
+/* A closed process reads as one summary immediately followed by its answer, so
+   it binds tighter than the flow rhythm above. Expanded process rows return to
+   the ordinary column gap. */
+.flowItem[data-turn-process-answer] {
+  --dsh-chat-flow-gap: 4px;
 }
 
 /* Empty Seats, including retained empty slot anchors, preserve Turn lookup
