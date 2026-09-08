@@ -62,6 +62,13 @@
   margin-bottom: calc(-1 * var(--dsh-assistant-block-gap));
 }
 
+/* A visible Think header captions the narration directly under it: the pair
+   reads as one unit at 2px instead of the 8px that separates independent
+   blocks. Only the block that follows the reasoning row tightens. */
+.body > .reasoning:not([hidden]) + * {
+  margin-top: -6px;
+}
+
 /* Interrupted-turn terminal marker: quiet inline tag, no animation. Fixed
    size like the small/code token variants — 11px is dense secondary text
    that would fall to an illegible 9px at the 12px floor. */
