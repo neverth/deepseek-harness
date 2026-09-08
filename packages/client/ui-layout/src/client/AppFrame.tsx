@@ -161,38 +161,50 @@ export function AppFrame({
     }
   }, [actions])
 
-  // Soft keyboard (mobile): when the keyboard is up, the layout viewport keeps
-  // its full height while the visual viewport shrinks. Pinning the frame with
-  // position:fixed fights the browser's own visual-viewport panning and locks
-  // touch scroll, so only the covered strip is reserved as bottom padding.
-  // visualViewport scroll is ignored: that event is the user panning the page.
-  const [keyboardInset, setKeyboardInset] = useState(0)
+  // Soft keyboard (mobile): the layout viewport keeps its full height while the
+  // visual viewport shrinks and pans, so bottom-anchored chrome has to be
+  // told how much of the screen the keyboard covers. `interactive-widget=
+  // resizes-content` in the shell handles browsers that support it; iOS Safari
+  // ignores that as of 17.4, so the strip is measured here and published as
+  // --dsh-keyboard-inset for the composer to sit on.
+  //
+  // The measurement rides a CSS custom property rather than React state: the
+  // keyboard moves the visual viewport during typing, scrolling, and the
+  // editor's own growth, and re-rendering the whole frame on each of those
+  // stutters. The property updates in place, so only the rules that read it
+  // reflow.
+  //
+  // `scroll` matters as much as `resize`: iOS pans the visual viewport without
+  // resizing it whenever the focused box changes height, which is exactly the
+  // case that left the composer stranded behind the keyboard after a line was
+  // added or deleted.
   useEffect(() => {
     const vv = window.visualViewport
     if (vv === null || vv === undefined) return
+    const root = document.documentElement
     let raf: number | null = null
     const update = (): void => {
       raf = null
-      if (frameRef.current === null) return
-      const width = frameRef.current.getBoundingClientRect().width
-      if (width > MOBILE_MAX) {
-        setKeyboardInset(prev => (prev === 0 ? prev : 0))
-        return
-      }
-      const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
-      setKeyboardInset(prev => (prev === inset ? prev : inset))
+      const frame = frameRef.current
+      const covered = frame !== null && frame.getBoundingClientRect().width <= MOBILE_MAX
+        ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
+        : 0
+      root.style.setProperty('--dsh-keyboard-inset', `${String(covered)}px`)
     }
     const schedule = (): void => {
       if (raf !== null) return
       raf = requestAnimationFrame(update)
     }
     vv.addEventListener('resize', schedule)
+    vv.addEventListener('scroll', schedule)
     window.addEventListener('resize', schedule)
     schedule()
     return () => {
       vv.removeEventListener('resize', schedule)
+      vv.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', schedule)
       if (raf !== null) cancelAnimationFrame(raf)
+      root.style.removeProperty('--dsh-keyboard-inset')
     }
   }, [])
 
@@ -325,8 +337,6 @@ export function AppFrame({
         gridTemplateColumns: mobile
           ? 'minmax(0, 1fr) 0px'
           : `${cols.sidebar}px minmax(${cols.rightbar === 0 ? 0 : CENTER_MIN}px, 1fr) minmax(0px, ${rightbarMax}px)`,
-        // Soft keyboard up (mobile): reserve the covered strip at the bottom.
-        paddingBottom: keyboardInset > 0 ? keyboardInset : undefined,
       }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-rightbar-collapsed={cols.rightbar === 0 || undefined}
