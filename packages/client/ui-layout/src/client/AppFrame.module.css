@@ -123,6 +123,24 @@
    details resolve to 0), and the column becomes a fixed overlay drawer that
    slides in over the conversation. */
 
+/* The frame is glued to the visual viewport instead of filling the layout
+   viewport, because the soft keyboard shrinks only the former: AppFrame
+   publishes the two measurements and the frame follows both the shrink and the
+   pan. Everything inside then lays out inside the region the user can actually
+   see, so the composer's floor clears the keys as ordinary layout and no
+   descendant needs its own keyboard arithmetic.
+
+   `top`/`height`, never a transform: a transformed ancestor would become the
+   containing block for the position:fixed overlays inside (menus, modals,
+   lightboxes, the drawer itself), silently re-anchoring all of them. */
+.frame[data-mobile] {
+  position: fixed;
+  top: var(--dsh-visual-viewport-top, 0px);
+  left: 0;
+  width: 100%;
+  height: var(--dsh-visual-viewport-height, 100%);
+}
+
 .frame[data-mobile] .sidebarCol {
   position: absolute;
   top: 0;

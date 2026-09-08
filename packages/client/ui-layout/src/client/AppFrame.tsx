@@ -149,22 +149,39 @@ export function AppFrame({
   // (or the default when the wide preference is closed) and the center
   // absorbs the squeeze.
   // Soft keyboard (mobile): the layout viewport keeps its full height while the
-  // *visual* viewport shrinks and pans, so bottom-anchored chrome has to be
-  // told how much of the screen the keyboard covers. `interactive-widget=
-  // resizes-content` in the shell handles browsers that support it; iOS Safari
-  // ignores that as of 17.4, so the strip is measured here and published as
-  // --dsh-keyboard-inset for the composer to sit on.
+  // *visual* viewport shrinks and pans, so the app's own box stays taller than
+  // the part of the screen the user can see. Everything bottom-anchored then
+  // sits below the keys, and iOS starts panning to drag the focused editor back
+  // into view — a pan that fires again on every height change, which is what
+  // made the composer sink on a deleted line and snap back a frame later.
   //
-  // The measurement rides a CSS custom property rather than React state: the
+  // The frame is therefore glued to the visual viewport in the mobile regime
+  // (AppFrame.module.css consumes both properties): its top follows the pan and
+  // its height follows the shrink, so the layout box *is* the visible box. Any
+  // floor inside it is above the keys as ordinary layout, with no per-component
+  // keyboard arithmetic, and the focused editor is never out of view, so iOS has
+  // nothing left to pan toward and the oscillation stops at the source.
+  //
+  // `interactive-widget=resizes-content` in the shell would have the engine do
+  // this; no WebKit release implements it (iOS Safari 26 and 27 included), so
+  // the measurement is the load-bearing path on the phones this ships to.
+  //
+  // Both numbers come from `visualViewport`, never `window.innerHeight`: iOS 26
+  // made innerHeight track the *visual* viewport, so the difference the previous
+  // measurement relied on is identically zero there and its published inset
+  // never left 0 no matter how much screen the keys took (measured with the
+  // keyboard up: innerHeight 253, documentElement.clientHeight 714, visual
+  // height 253, offsetTop 461).
+  //
+  // The measurements ride CSS custom properties rather than React state: the
   // keyboard moves the visual viewport during typing, scrolling, and the
   // editor's own growth, and re-rendering the whole frame on each of those
-  // stutters. The property updates in place, so only the rules that read it
+  // stutters. The properties update in place, so only the rules that read them
   // reflow.
   //
   // `scroll` matters as much as `resize`: iOS pans the visual viewport without
-  // resizing it whenever the focused box changes height, which is exactly the
-  // case that left the composer stranded behind the keyboard after a line was
-  // added or deleted.
+  // resizing it whenever the focused box changes height, and the frame has to
+  // follow that pan to stay on the visible region.
   useEffect(() => {
     const vv = window.visualViewport
     if (vv === null || vv === undefined) return
@@ -173,10 +190,13 @@ export function AppFrame({
     const update = (): void => {
       raf = null
       const frame = frameRef.current
-      const covered = frame !== null && frame.getBoundingClientRect().width <= MOBILE_MAX
-        ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
-        : 0
-      root.style.setProperty('--dsh-keyboard-inset', `${String(covered)}px`)
+      if (frame !== null && frame.getBoundingClientRect().width <= MOBILE_MAX) {
+        root.style.setProperty('--dsh-visual-viewport-height', `${String(Math.round(vv.height))}px`)
+        root.style.setProperty('--dsh-visual-viewport-top', `${String(Math.round(vv.offsetTop))}px`)
+        return
+      }
+      root.style.removeProperty('--dsh-visual-viewport-height')
+      root.style.removeProperty('--dsh-visual-viewport-top')
     }
     const schedule = (): void => {
       if (raf !== null) return
@@ -191,7 +211,8 @@ export function AppFrame({
       vv.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', schedule)
       if (raf !== null) cancelAnimationFrame(raf)
-      root.style.removeProperty('--dsh-keyboard-inset')
+      root.style.removeProperty('--dsh-visual-viewport-height')
+      root.style.removeProperty('--dsh-visual-viewport-top')
     }
   }, [])
 
