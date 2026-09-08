@@ -499,11 +499,18 @@
 
 /* Opened over the transcript: a bottom sheet the transcript scrolls under.
    No scrim — the user keeps reading and scrolling the messages they are
-   replying to, and the same pill that opened the sheet closes it. */
+   replying to, and the same pill that opened the sheet closes it.
+
+   Fixed to the layout viewport, then lifted by the strip the soft keyboard
+   covers (AppFrame publishes the measurement). Anchoring to the scrollport
+   instead left the sheet behind the keyboard: the scrollport belongs to the
+   layout viewport, which the keyboard does not resize, so its floor stays under
+   the keys. The lift is a `bottom` offset rather than a transform so the sheet
+   keeps its own height and the safe-area inset composes with it. */
 .root[data-mobile][data-phase='active'] .composerSeat:not([data-composer-collapsed]) {
-  position: absolute;
+  position: fixed;
   right: 0;
-  bottom: 0;
+  bottom: calc(var(--dsh-keyboard-inset, 0px) + env(safe-area-inset-bottom, 0px));
   left: 0;
   z-index: 12;
   padding-top: 8px;
@@ -512,19 +519,21 @@
 }
 
 /* The sheet floats over the scrollport, so the transcript reserves its height
-   (published by the seat's ResizeObserver) to keep the last message reachable
-   above it. */
+   (published by the seat's ResizeObserver) plus whatever the keyboard covers,
+   keeping the last message reachable above both. */
 .root[data-mobile][data-phase='active'] .scrollBody:has(.composerSeat:not([data-composer-collapsed])) {
-  padding-bottom: var(--dsh-composer-height, 0px);
+  padding-bottom: calc(var(--dsh-composer-height, 0px) + var(--dsh-keyboard-inset, 0px));
 }
 
 /* ONE floating pill owns both directions: bottom-right of the column, on the
    send button's blue pair with a white label. Tapping it opens the composer;
    tapping the same spot closes it. */
 .composerTrigger {
-  position: absolute;
+  /* Fixed for the same reason as the sheet: the scrollport's floor sits under
+     the keyboard, so an absolute pill goes with it. */
+  position: fixed;
   right: 16px;
-  bottom: 20px;
+  bottom: calc(var(--dsh-keyboard-inset, 0px) + env(safe-area-inset-bottom, 0px) + 20px);
   z-index: 13; /* above the sheet (12): it rides on the sheet's top edge while open */
   display: grid;
   place-items: center;
@@ -553,9 +562,13 @@
 }
 
 /* Open: the same pill sits just above the sheet it opened, shrunk to its
-   chevron so it covers as little of the composer as possible. */
+   chevron so it covers as little of the composer as possible. The sheet already
+   rides the keyboard inset, so this clears the sheet's own height on top. */
 .composerTrigger[data-composer-open] {
-  bottom: calc(var(--dsh-composer-height, 0px) + 12px);
+  bottom: calc(
+    var(--dsh-keyboard-inset, 0px) + env(safe-area-inset-bottom, 0px)
+    + var(--dsh-composer-height, 0px) + 12px
+  );
   padding: 0;
 }
 

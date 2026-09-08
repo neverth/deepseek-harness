@@ -434,3 +434,79 @@ describe('AppFrame — unmount with an in-flight resize frame', () => {
     expect(tracks(frame)).toEqual([280, 330])
   })
 })
+
+describe('AppFrame — soft keyboard inset', () => {
+  /**
+   * Install a movable visual viewport, mimicking a keyboard covering part of
+   * the screen while the layout viewport keeps its height.
+   * @returns handles to move the viewport and to fire either of its events.
+   */
+  function stubVisualViewport(): {
+    set: (height: number, offsetTop: number) => void
+    fire: (type: 'resize' | 'scroll') => void
+  } {
+    const listeners = new Map<string, Set<() => void>>()
+    const vv = {
+      height: 1080,
+      offsetTop: 0,
+      addEventListener: (type: string, fn: () => void) => {
+        listeners.set(type, (listeners.get(type) ?? new Set<() => void>()).add(fn))
+      },
+      removeEventListener: (type: string, fn: () => void) => { listeners.get(type)?.delete(fn) },
+    }
+    vi.stubGlobal('visualViewport', vv)
+    return {
+      set: (height, offsetTop) => { vv.height = height; vv.offsetTop = offsetTop },
+      fire: (type) => { for (const fn of [...listeners.get(type) ?? []]) fn() },
+    }
+  }
+
+  const inset = (): string => document.documentElement.style.getPropertyValue('--dsh-keyboard-inset')
+
+  it('publishes the covered strip on a narrow frame and clears it again', () => {
+    const vv = stubVisualViewport()
+    frameWidth = 500
+    window.innerHeight = 1080
+    mountFrame()
+    act(() => { vi.advanceTimersByTime(20) })
+    expect(inset()).toBe('0px')
+
+    vv.set(700, 0)
+    act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
+    expect(inset()).toBe('380px')
+
+    vv.set(1080, 0)
+    act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
+    expect(inset()).toBe('0px')
+  })
+
+  it('follows a pan that resizes nothing, which is what a growing box does', () => {
+    const vv = stubVisualViewport()
+    frameWidth = 500
+    window.innerHeight = 1080
+    mountFrame()
+    vv.set(700, 0)
+    act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
+    expect(inset()).toBe('380px')
+
+    // iOS pans the visual viewport without resizing it when the focused box
+    // changes height: only `scroll` fires, and the inset has to follow or the
+    // composer is left behind the keys.
+    vv.set(700, 60)
+    act(() => { vv.fire('scroll'); vi.advanceTimersByTime(20) })
+    expect(inset()).toBe('320px')
+  })
+
+  it('reserves nothing on a desktop frame and drops the property on unmount', () => {
+    const vv = stubVisualViewport()
+    frameWidth = 1920
+    window.innerHeight = 1080
+    const { unmount } = mountFrame()
+    vv.set(700, 0)
+    act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
+    expect(inset()).toBe('0px')
+
+    unmount()
+    expect(inset()).toBe('')
+  })
+})

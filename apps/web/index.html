@@ -2,7 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- interactive-widget: browsers that support it resize the layout viewport
+         for the soft keyboard, so bottom-anchored chrome needs no JS. iOS
+         Safari ignores it as of 17.4, which is why AppFrame also publishes a
+         measured --dsh-keyboard-inset from the visual viewport. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>DSH Local Build</title>
