@@ -568,6 +568,30 @@ button.crumb:hover {
   display: none;
 }
 
+/* The floating drawer trigger ("任务", ~62px at left:12) overlaps the title
+   row's 20px inset; reserve its width plus a gap so the crumb cannot slide
+   under it. */
+.root[data-mobile] .header {
+  padding-left: 92px;
+}
+
+/* A phone-width column cannot honor the current crumb's "read in full, wrap"
+   rule without crowding out the header controls; ellipsize it like an
+   ancestor crumb. */
+.root[data-mobile] .crumbCurrent {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The open-in-app split (reveal working directory + choose application)
+   launches native desktop apps, which a phone cannot do, so the mobile
+   header drops the whole utilities seat. */
+.root[data-mobile] .headerUtilities {
+  display: none;
+}
+
 /* iOS zooms the whole page in whenever focus lands on a control whose rendered
    font is under 16px, and it never zooms back out — which also pushes the
    fixed composer out of the visual viewport. Since iOS 10 Safari deliberately
@@ -614,6 +638,13 @@ button.crumb:hover {
    above it. */
 .root[data-mobile][data-phase='active'] .scrollBody:has(.composerSeat:not([data-composer-collapsed])) {
   padding-bottom: var(--dsh-composer-height, 0px);
+}
+
+/* Collapsed, the seat measures zero but the floating "输入" pill still covers
+   20px-from-floor + 48px height; reserve that band plus clearance so the last
+   message's action row never finishes underneath the pill. */
+.root[data-mobile][data-phase='active'] .scrollBody:has(.composerSeat[data-composer-collapsed]) {
+  padding-bottom: 84px;
 }
 
 /* ONE floating pill owns both directions: bottom-right of the column, on the
