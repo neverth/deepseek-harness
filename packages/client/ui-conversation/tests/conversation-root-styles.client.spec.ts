@@ -50,4 +50,25 @@ describe('ConversationRoot.module.css mobile regime', () => {
   it('hides the view switcher, which costs a whole row of a phone screen', () => {
     expect(declarations('.root[data-mobile] .tabs')).toEqual(['display: none'])
   })
+
+  it('reserves the drawer-trigger width so the title cannot slide under it', () => {
+    expect(declarations('.root[data-mobile] .header')).toContain('padding-left: 92px')
+  })
+
+  it('ellipsizes the current title crumb on a phone column', () => {
+    const rules = declarations('.root[data-mobile] .crumbCurrent')
+    expect(rules).toContain('max-width: 100%')
+    expect(rules).toContain('overflow: hidden')
+    expect(rules).toContain('white-space: nowrap')
+    expect(rules).toContain('text-overflow: ellipsis')
+  })
+
+  it('drops the desktop-only open-in-app controls from the mobile header', () => {
+    expect(declarations('.root[data-mobile] .headerUtilities')).toEqual(['display: none'])
+  })
+
+  it('keeps the last message clear of the collapsed composer floating pill', () => {
+    const selector = ".root[data-mobile][data-phase='active'] .scrollBody:has(.composerSeat[data-composer-collapsed])"
+    expect(declarations(selector)).toEqual(['padding-bottom: 84px'])
+  })
 })
