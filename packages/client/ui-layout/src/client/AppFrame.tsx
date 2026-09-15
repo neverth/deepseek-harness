@@ -194,7 +194,14 @@ export function AppFrame({
   //
   // `scroll` matters as much as `resize`: iOS pans the visual viewport without
   // resizing it whenever the focused box changes height, and the frame has to
-  // follow that pan to stay on the visible region.
+  // follow that pan to stay on the visible region. That follow is gated on the
+  // keyboard being up (`vv.height` shorter than the layout viewport): with no
+  // inner scroller able to consume the gesture — a short transcript, or a drag
+  // over non-scrolling chrome such as the sidebar header — iOS rubber-bands the
+  // document itself, and offsetTop then moves WITH the finger while the layout
+  // viewport keeps full height. Following it there moves the frame the same way
+  // the finger goes, reading as a reversed scroll. Keyboard pans are the only
+  // pan worth following, and the keys always shrink vv.height first.
   useEffect(() => {
     const vv = window.visualViewport
     if (vv === null || vv === undefined) return
@@ -204,8 +211,14 @@ export function AppFrame({
       raf = null
       const frame = frameRef.current
       if (frame !== null && frame.getBoundingClientRect().width <= MOBILE_MAX) {
+        // documentElement.clientHeight stays the layout viewport height even on
+        // iOS 26, where window.innerHeight tracks the visual viewport instead.
+        const keyboardUp = vv.height < root.clientHeight - 1
         root.style.setProperty('--dsh-visual-viewport-height', `${String(Math.round(vv.height))}px`)
-        root.style.setProperty('--dsh-visual-viewport-top', `${String(Math.round(vv.offsetTop))}px`)
+        root.style.setProperty(
+          '--dsh-visual-viewport-top',
+          keyboardUp ? `${String(Math.round(vv.offsetTop))}px` : '0px',
+        )
         return
       }
       root.style.removeProperty('--dsh-visual-viewport-height')
