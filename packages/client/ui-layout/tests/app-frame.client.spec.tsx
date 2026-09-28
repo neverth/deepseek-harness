@@ -793,7 +793,6 @@ describe('AppFrame — soft keyboard sizing', () => {
     expect([height(), top()]).toEqual(['', ''])
 
     frameWidth = 500
-    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
     act(() => { vv.fire('resize'); vi.advanceTimersByTime(20) })
     expect(height()).toBe('700px')
 
