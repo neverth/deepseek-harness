@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
+import { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { TurnNavigator } from '../src/client/chat/TurnNavigator.tsx'
 import type { TurnRailItem } from '../src/client/chat/turn-rail-items.ts'
 import { zh } from '../src/client/locale.ts'
@@ -22,7 +23,7 @@ function item(turn: number, prompt: string, loaded: boolean): TurnRailItem {
     response: '',
     anchor: loaded
       ? { kind: 'loaded', key: `turn:${String(turn)}` }
-      : { kind: 'unloaded', seq: turn },
+      : { kind: 'unloaded', seq: SessionSeq(turn) },
   }
 }
 
