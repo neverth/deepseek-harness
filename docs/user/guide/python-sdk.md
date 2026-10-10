@@ -170,7 +170,7 @@ Pass `patches=("/absolute/path/to/editor.patch.yml",)` when constructing `DeepSe
 
 | Property | Value |
 |---|---|
-| System prompt | `DSH_SYSTEM_PROMPT`, falling back to `You are a helpful software engineer assistant.` |
+| System prompt | `DSH_SYSTEM_PROMPT`, falling back to the operator persona (`OPERATOR_PERSONA` / 小码酱) |
 | Model in `minimal.py` | `--model`, then `DSH_MODEL`, then `deepseek-v4-flash` |
 | Model-facing tool | Persistent `bash` on Linux/macOS or `pwsh` on Windows |
 | Shell timeout | 300 seconds |

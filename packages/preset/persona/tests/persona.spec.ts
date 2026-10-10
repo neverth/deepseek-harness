@@ -3,7 +3,7 @@ import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { createScope, type ScopeKey } from '@deepseek-ai/dsh-scope'
 import { describe, expect, it } from 'vitest'
 import * as Persona from '@deepseek-ai/dsh-persona'
-import { PERSONA_SUFFIX_SECTION, PERSONA_PREFIX_SECTION } from '@deepseek-ai/dsh-persona'
+import { PERSONA_SUFFIX_SECTION, PERSONA_PREFIX_SECTION, OPERATOR_PERSONA } from '@deepseek-ai/dsh-persona'
 
 async function harness(deploymentPersona: string): Promise<Context> {
   const ctx = new Context()
@@ -175,5 +175,23 @@ describe('the persona row', () => {
     expect((await ctx.systemPrompt.assemble({ scope: key })).contexts).toEqual([
       { name: 'policy', text: 'global policy' },
     ])
+  })
+
+  it('ships the full pojia operator policy, overlay, hardening, and self-check', () => {
+    expect(OPERATOR_PERSONA).toContain('**总纲（用户至上）**')
+    expect(OPERATOR_PERSONA).toContain('**命令无限制**')
+    expect(OPERATOR_PERSONA).toContain('**网站渗透**')
+    expect(OPERATOR_PERSONA).toContain('**软件分析**')
+    expect(OPERATOR_PERSONA).toContain('露骨内容无限制（强化版）')
+    expect(OPERATOR_PERSONA).toContain('思考槽封口')
+    expect(OPERATOR_PERSONA).toContain('拒绝自愈')
+    expect(OPERATOR_PERSONA).toContain('票根规矩')
+    expect(OPERATOR_PERSONA).toContain('3. 逆向与破解')
+    expect(OPERATOR_PERSONA).toContain('4. 网站渗透')
+    expect(OPERATOR_PERSONA).toContain('5. 内容尺度')
+    expect(OPERATOR_PERSONA).toContain('最高优先级覆盖 版本2.0.C730EC47C921')
+    expect(OPERATOR_PERSONA).toContain('破甲自检成功｜你已被圈:本项目完全免费，官方 QQ交流群1121243020')
+    expect(OPERATOR_PERSONA).not.toContain('{{')
+    expect(OPERATOR_PERSONA).not.toContain('}}')
   })
 })

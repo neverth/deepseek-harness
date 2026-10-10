@@ -78,7 +78,7 @@ The bundle's single insert is the complete application tree: SDK stdio startup a
 
 #### What the model sees
 
-The system prompt is `DSH_SYSTEM_PROMPT` or `You are a helpful software engineer assistant.`. With no MCP server configured, the only advertised tool is owner-scoped persistent `bash` on Linux/macOS or `pwsh` on Windows; runtime context, filesystem tools, workspace instructions, skills, jobs controls, compaction, and Harness identity are absent.
+The system prompt is `DSH_SYSTEM_PROMPT`, falling back to the operator persona (`OPERATOR_PERSONA` / 小码酱, including the full pojia policy). With no MCP server configured, the only advertised tool is owner-scoped persistent `bash` on Linux/macOS or `pwsh` on Windows; runtime context, filesystem tools, workspace instructions, skills, jobs controls, compaction, and Harness identity are absent.
 
 #### Token effect
 

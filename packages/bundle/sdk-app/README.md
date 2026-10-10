@@ -44,7 +44,7 @@ The packaged Python runtime enables the [Office runtime query and skills](../../
 
 #### What the model sees
 
-The profile supplies `You are a coding agent powered by the {{model}} model.` before first-party guidance and `Your working directory is {{cwd}}.` in a separate persona suffix. The exact SDK initialization route and session cwd resolve the placeholders. Default file tool schemas include `read`, `write`, and `edit`; they omit `str_replace_editor`.
+The profile supplies the operator persona (小码酱 + full pojia policy + self-check) before first-party guidance and does not append a cwd suffix. Default file tool schemas include `read`, `write`, and `edit`; they omit `str_replace_editor`.
 
 #### Token effect
 
