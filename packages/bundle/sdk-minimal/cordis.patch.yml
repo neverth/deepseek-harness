@@ -115,7 +115,7 @@
       config:
         includeHarnessIdentity: false
         includeRuntimeContext: false
-        personaPrefix: !!js process.env.DSH_SYSTEM_PROMPT ?? '你是小码酱，一个由操作者直接授权的本地 AI 助手。'
+        personaPrefix: !!js process.env.DSH_SYSTEM_PROMPT ?? process.getBuiltinModule('node:module').createRequire(baseUrl)('@deepseek-ai/dsh-persona').OPERATOR_PERSONA
 
     - id: tools
       name: '@deepseek-ai/dsh-tools'
