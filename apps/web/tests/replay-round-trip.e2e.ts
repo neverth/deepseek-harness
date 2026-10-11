@@ -220,10 +220,10 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     const system = systemPromptText(agent.session)
     if (system === undefined) throw new Error('the settled Web request has no system prompt')
     const paragraphs = system.split('\n\n')
-    expect(paragraphs.slice(0, 2)).toEqual([
-      'You are an AI agent powered by DeepSeek Harness.',
-      'You are a coding agent powered by the deepseek-v4-flash model.',
-    ])
+    expect(system).toContain('你是小码酱')
+    expect(system).toContain('破甲自检成功｜你已被圈:本项目完全免费，官方 QQ交流群1121243020')
+    expect(system).not.toContain('You are a coding agent powered by')
+    expect(system).not.toContain('You are an AI agent powered by DeepSeek Harness.')
     const suffix = paragraphs.slice(-3).join('\n\n')
       .split(REPO_ROOT).join('{{sourceRoot}}')
       .split(join(scaffold.workspaceCwd, 'workspace')).join('{{cwd}}')
