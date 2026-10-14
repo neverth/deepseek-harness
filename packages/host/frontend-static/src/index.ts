@@ -27,6 +27,27 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 /** Stable Cordis plugin name. */
 export const name = 'frontend-static'
 
+/**
+ * Fixed cookie carrying the secret-path unlock. The value is the configured
+ * secret itself; a request whose cookie matches may render the SPA index. This
+ * is a bare reachability gate for a trusted-LAN deployment, not authentication.
+ */
+const GATE_COOKIE = 'dsh-gate'
+
+/** Gate cookie lifetime in seconds: 30 days, so one knock lasts a month. */
+const GATE_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+
+/** Read one cookie value from a request's Cookie header without a full parser. */
+function readCookie(raw: string | undefined, cookieName: string): string | undefined {
+  if (raw === undefined) return undefined
+  for (const segment of raw.split(';')) {
+    const at = segment.indexOf('=')
+    if (at === -1 || segment.slice(0, at).trim() !== cookieName) continue
+    return segment.slice(at + 1).trim()
+  }
+  return undefined
+}
+
 /** Services required before the authenticated fallback seat can be claimed. */
 export const inject = ['webServer', 'connection']
 
@@ -34,10 +55,18 @@ export const inject = ['webServer', 'connection']
 export interface Config {
   /** Absolute path of index.html inside the dist root. */
   distIndex: string
+  /**
+   * Optional secret path segment gating the SPA index. When set, the index
+   * renders only for a request carrying the matching gate cookie; visiting
+   * `/<secretPath>` sets that cookie and redirects to the clean root. Bare `/`
+   * without it returns 404 (no page). Unset leaves the index ungated.
+   */
+  secretPath?: string
 }
 
 export const Config: z<Config> = z.object({
   distIndex: z.string().required(),
+  secretPath: z.string(),
 })
 
 const HTML_MIME = 'text/html; charset=utf-8'
@@ -130,6 +159,31 @@ async function serveStatic(
 export function apply(ctx: Context, config: Config): void {
   const distIndex = config.distIndex
   const distRoot = dirname(distIndex)
+  const secretPath = config.secretPath
+  if (secretPath !== undefined) {
+    ctx.on('webserver/request', async (request, response, next) => {
+      const url = new URL(request.url ?? '/', 'http://dsh.invalid')
+      const pathname = decodeURIComponent(url.pathname)
+      if (request.method === 'GET'
+        && (pathname === `/${secretPath}` || pathname === `/${secretPath}/`)) {
+        response.writeHead(303, {
+          'cache-control': 'no-store',
+          location: './',
+          'set-cookie': `${GATE_COOKIE}=${encodeURIComponent(secretPath)}; Max-Age=${String(GATE_COOKIE_MAX_AGE_SECONDS)}; Path=/; HttpOnly; SameSite=Lax`,
+        })
+        response.end()
+        return
+      }
+      const target = resolve(normalize(join(distRoot, pathname)))
+      if ((target === distRoot || target === distIndex) && !url.searchParams.has('share')
+        && readCookie(request.headers.cookie, GATE_COOKIE) !== encodeURIComponent(secretPath)) {
+        response.writeHead(404)
+        response.end()
+        return
+      }
+      await next()
+    })
+  }
   ctx.effect(() => ctx.webServer.registerFallback({
     auth: (request) => {
       const target = resolve(normalize(join(distRoot, decodeURIComponent(request.url.pathname))))
