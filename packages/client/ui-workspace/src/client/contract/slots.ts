@@ -301,6 +301,8 @@ export type RowToast =
   | { kind: 'defaultWorkspaceFailed' }
   | { kind: 'forkRequiresOpen'; sessionId: SessionId }
   | { kind: 'shortcutForkFailed'; reason: 'unavailable' | 'failed' }
+  | { kind: 'shareCopied' }
+  | { kind: 'shareFailed' }
   /**
    * An explicit New Session request that failed. `message` is untranslated:
    * a Host refusal as `code: message` — the stable code stays in the copy so
@@ -389,6 +391,12 @@ export interface SessionArchiveConfirmInjected {
 export interface ForkSessionInjected {
   /** Fork a Session at its last completed turn; the child arrives through the Host list. */
   forkSession: (sessionId: SessionId) => void
+}
+
+/** Share action share: copy the session's share link and report the outcome. */
+export interface ShareSessionInjected {
+  /** Copy the session's share link to the clipboard; raises the copied or failed notice. */
+  shareSession: (sessionId: SessionId) => void
 }
 
 /** Rename action share: the row only raises the request; the dialog entry answers it. */

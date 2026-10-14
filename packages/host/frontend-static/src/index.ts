@@ -12,7 +12,7 @@
  * @module @deepseek-ai/dsh-host-frontend-static
  */
 
-import type { ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -23,6 +23,28 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 /** Stable Cordis plugin name. */
 export const name = 'frontend-static'
 
+/**
+ * Fixed cookie carrying the secret-path unlock. The value is the configured
+ * secret itself; a request whose cookie matches may render the SPA index. This
+ * is a bare reachability gate for a trusted-LAN deployment, not authentication.
+ */
+const GATE_COOKIE = 'dsh-gate'
+
+/** Gate cookie lifetime in seconds: 30 days, so one knock lasts a month. */
+const GATE_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+
+/** Read one cookie value from a request's Cookie header without a full parser. */
+function readCookie(req: IncomingMessage, cookieName: string): string | undefined {
+  const raw = req.headers.cookie
+  if (raw === undefined) return undefined
+  for (const segment of raw.split(';')) {
+    const at = segment.indexOf('=')
+    if (at === -1 || segment.slice(0, at).trim() !== cookieName) continue
+    return segment.slice(at + 1).trim()
+  }
+  return undefined
+}
+
 /** Services required before the authenticated fallback seat can be claimed. */
 export const inject = ['webServer', 'connection']
 
@@ -30,10 +52,18 @@ export const inject = ['webServer', 'connection']
 export interface Config {
   /** Absolute path of index.html inside the dist root. */
   distIndex: string
+  /**
+   * Optional secret path segment gating the SPA index. When set, the index
+   * renders only for a request carrying the matching gate cookie; visiting
+   * `/<secretPath>` sets that cookie and redirects to the clean root. Bare `/`
+   * without it returns 404 (no page). Unset leaves the index ungated.
+   */
+  secretPath?: string
 }
 
 export const Config: z<Config> = z.object({
   distIndex: z.string().required(),
+  secretPath: z.string(),
 })
 
 const HTML_MIME = 'text/html; charset=utf-8'
@@ -113,6 +143,7 @@ export async function serveStatic(
 export function apply(ctx: Context, config: Config): void {
   const distIndex = config.distIndex
   const distRoot = dirname(distIndex)
+  const secretPath = config.secretPath
   // Insert after all index transforms so the base precedes every resource reference.
   const renderIndex = async (): Promise<string> => {
     const body = ctx.webServer.renderIndex(await readFile(distIndex, 'utf8'))
@@ -127,13 +158,43 @@ export function apply(ctx: Context, config: Config): void {
       return
     }
     /* v8 ignore next -- node:http always sets url on server requests */
-    const rawPath = new URL(req.url ?? '/', 'http://x').pathname
+    const requestUrl = new URL(req.url ?? '/', 'http://x')
+    const pathname = decodeURIComponent(requestUrl.pathname)
+    // Secret-path gate: the knock (`/<secretPath>`) sets the gate cookie and
+    // redirects to the clean root; an index served below additionally requires
+    // that cookie. Assets stay public — the hashed shell is inert without the
+    // gated index, which is what reveals the session list.
+    if (secretPath !== undefined) {
+      if (req.method === 'GET' && (pathname === `/${secretPath}` || pathname === `/${secretPath}/`)) {
+        res.writeHead(303, {
+          'cache-control': 'no-store',
+          'location': './',
+          'set-cookie': `${GATE_COOKIE}=${encodeURIComponent(secretPath)}; Max-Age=${String(GATE_COOKIE_MAX_AGE_SECONDS)}; Path=/; HttpOnly; SameSite=Lax`,
+        })
+        res.end()
+        return
+      }
+    }
+    // A `?share=<id>` link opens one session's isolated view and is exempt from
+    // the knock: the recipient reaches only that session, never the list, and
+    // no gate cookie is set, so the bare root stays 404 for them. The hash form
+    // (`#share=`) never reaches the server, so the share link must carry the id
+    // as this query param to pass the gate.
+    const sharing = requestUrl.searchParams.has('share')
+    const gatePasses = (): boolean => {
+      if (secretPath === undefined || sharing) return true
+      if (readCookie(req, GATE_COOKIE) === encodeURIComponent(secretPath)) return true
+      // No knock cookie: the index does not exist for this caller.
+      res.writeHead(404)
+      res.end()
+      return false
+    }
     await serveStatic(
-      decodeURIComponent(rawPath),
+      pathname,
       res,
       distRoot,
       distIndex,
-      () => ctx.connection.authorizeIndex(req, res),
+      () => gatePasses() && ctx.connection.authorizeIndex(req, res),
       renderIndex,
     )
   }), 'frontend-static: fallback seat')

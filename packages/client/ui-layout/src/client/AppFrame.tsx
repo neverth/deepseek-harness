@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { shareSessionId } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -252,7 +253,12 @@ export function AppFrame({
   // conversation as an overlay drawer (same narrowExpanded toggle), the
   // right column stays closed, and the center column owns the full width.
   const mobile = viewport <= MOBILE_MAX
-  const drawerOpen = mobile && layoutInfo.narrowExpanded
+  // Share mode (opened from a `#share=<id>` link): the sidebar is the only
+  // surface that lists, searches, or starts other sessions, so hiding it
+  // confines this page to the one shared session. Read once at mount — a
+  // share link is a fresh page load, never an in-place hash edit.
+  const shared = useMemo(() => shareSessionId() !== undefined, [])
+  const drawerOpen = mobile && !shared && layoutInfo.narrowExpanded
   const drawerWidth = Math.min(MOBILE_DRAWER, Math.max(0, viewport - 56))
   // The drawer covers the conversation, so navigating to a session inside it
   // must reveal that session: close on every actual session change.
@@ -266,15 +272,22 @@ export function AppFrame({
   const darwin = document.documentElement.dataset.platform === 'darwin'
   const collapsedWidth = darwin
     || document.documentElement.hasAttribute('data-windows-titlebar') ? 0 : SIDEBAR_COLLAPSED
+  // Share mode drops the sidebar track to zero width and keeps the center and
+  // right columns: a zero preference with a zero collapsed rail leaves the
+  // solver's center = viewport - 0 - rightbar invariant intact.
+  const effectiveCollapsedWidth = shared ? 0 : collapsedWidth
+  const effectiveSidebarPreference = shared ? 0 : sidebarPreference
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
   const closed = { sidebar: 0, center: viewport, rightbar: 0 }
+  // A narrow frame with the right panel closed concedes the sidebar track too.
+  const normalSidebar = !layoutInfo.rightbarShown && narrow ? 0 : effectiveSidebarPreference
   const normal = mobile
     ? closed
-    : computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth)
+    : computeColumns(viewport, normalSidebar, rightbarPreference, effectiveCollapsedWidth)
   const cols = mobile
     ? closed
-    : computeColumns(viewport, sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, collapsedWidth)
+    : computeColumns(viewport, effectiveSidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, effectiveCollapsedWidth)
   const colsRef = useRef(cols)
   colsRef.current = cols
   const rightbarWidth = useRef(normal.rightbar)
@@ -342,10 +355,10 @@ export function AppFrame({
   // whole and was corrected two frames later — visible jitter. cols keeps only
   // the discrete decisions (track present, collapse state) and the drag base.
   const rightbarMax = cols.rightbar === 0 ? 0 : clampWidth(rightbarPreference, RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO)
-  const sidebar = useMemo(() => renderSlot('sidebar', {
+  const sidebar = useMemo(() => shared ? null : renderSlot('sidebar', {
     collapsed: mobile ? false : sidebarCollapsed,
     width: mobile ? drawerWidth : cols.sidebar,
-  }), [renderSlot, mobile, sidebarCollapsed, drawerWidth, cols.sidebar])
+  }), [shared, renderSlot, mobile, sidebarCollapsed, drawerWidth, cols.sidebar])
   const main = useMemo(() => (
     <MainPanel usePanelInfo={usePanelInfo} renderSlot={renderSlot} />
   ), [usePanelInfo, renderSlot])
@@ -356,7 +369,7 @@ export function AppFrame({
   // row (ui-sidebar). AppFrame.module.css publishes the matching
   // --dsh-frame-leading-clearance under the same collapsed condition.
   const leading = useMemo(() => renderSlot('shell.leading', {}), [renderSlot])
-  const leadingMounted = darwin && sidebarCollapsed
+  const leadingMounted = darwin && sidebarCollapsed && !shared
 
   return (
     <div
@@ -407,8 +420,9 @@ export function AppFrame({
         </div>
       )}
       {/* Mobile chrome: the drawer trigger is the only way back to a sidebar
-          that has left the frame, and the scrim dismisses it. */}
-      {mobile && (
+          that has left the frame, and the scrim dismisses it. Share mode has
+          no sidebar to return to, so it carries no trigger. */}
+      {mobile && !shared && (
         <button
           type="button"
           className={css.drawerTrigger}
@@ -443,8 +457,9 @@ export function AppFrame({
         </button>
       )}
       {/* The collapsed rail is fixed-width: no resize handle while closed, and
-          the mobile regime has no draggable column edges at all. */}
-      {!mobile && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+          the mobile regime has no draggable column edges at all. Share mode
+          has no sidebar column, so it carries no handle either. */}
+      {!mobile && !shared && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
       {!mobile && layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && (
         <DragHandle side="rightbar" left={viewport - normal.rightbar} onStart={onRightbarStart} onDrag={onRightbarDrag} onEnd={onDragEnd} />
       )}

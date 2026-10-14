@@ -203,7 +203,14 @@ export function apply(ctx: Context, config: Config): void {
   /** The advertised root: the canonical `publicUrl`, or the listener's own origin. */
   const appRootUrl = (): string => publicUrl ?? ctx.webServer.getOrigin()
   ctx.provide('webApp', { getAdvertisedUrl: appRootUrl } satisfies WebApp)
-  ctx.plugin(FrontendStatic, { distIndex: internals.resolveDistIndex() })
+  // Optional secret-path gate for this deployment: when DSH_WEB_SECRET_PATH is
+  // set, the SPA index renders only after knocking on `/<secret>`, and bare `/`
+  // 404s. Unset leaves the index ungated (desktop and default web).
+  const secretPath = process.env.DSH_WEB_SECRET_PATH
+  ctx.plugin(FrontendStatic, {
+    distIndex: internals.resolveDistIndex(),
+    ...(secretPath === undefined || secretPath === '' ? {} : { secretPath }),
+  })
   if (config.surfaceContext) {
     ctx.inject(['shellEnv'], (runtimeCtx) => {
       runtimeCtx.shellEnv.register({
