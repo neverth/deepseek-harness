@@ -2,6 +2,7 @@
 
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { AccessEffect, RemoteEndpoint } from '@deepseek-ai/dsh-api-remote-access/client'
+import { shareSessionId } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ClientRemote, DirectoryListing, RemoteFailure } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
   ISessions,
@@ -335,6 +336,8 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   startSession(workspaceId?: WorkspaceId, options?: StartSessionOptions): void {
+    // Share mode confines the page to the shared session: no new session.
+    if (shareSessionId() !== undefined) return
     const { agentPreset, ...draft } = options ?? {}
     const draftOptions = options === undefined ? undefined : draft
     const initializeDraft = draftOptions !== undefined && (draftOptions.prompt !== undefined
@@ -463,6 +466,17 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   private async restoreSelection(workspaces: WorkspaceSnapshot, sessions: SessionListState): Promise<void> {
+    const shared = shareSessionId()
+    if (shared !== undefined) {
+      // Share mode: pin to the shared session and skip normal restoration, so
+      // the receiver only ever sees that one session. An unknown id (stale
+      // link) leaves the empty state; the sidebar is hidden either way.
+      const sharedId = shared as SessionId
+      if (sessions.byId[sharedId] !== undefined) {
+        this.replaceMain(sharedId, this.lifetime.signal, 'preserve')
+      }
+      return
+    }
     const saved = this.selection.getSnapshot()
     if (saved.subagentAddress !== undefined) {
       this.replaceMain(saved.subagentAddress, this.lifetime.signal, 'preserve')

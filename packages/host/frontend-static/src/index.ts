@@ -27,6 +27,28 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 /** Stable Cordis plugin name. */
 export const name = 'frontend-static'
 
+/**
+ * Fixed cookie carrying the secret-path unlock. The value is the configured
+ * secret itself; a request whose cookie matches may render the SPA index. This
+ * is a bare reachability gate for a trusted-LAN deployment, not authentication.
+ */
+const GATE_COOKIE = 'dsh-gate'
+
+/** Gate cookie lifetime in seconds: 30 days, so one knock lasts a month. */
+const GATE_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+
+/** Read one cookie value from a request's Cookie header without a full parser. */
+function readCookie(request: Request, cookieName: string): string | undefined {
+  const raw = request.headers.get('cookie')
+  if (raw === null) return undefined
+  for (const segment of raw.split(';')) {
+    const at = segment.indexOf('=')
+    if (at === -1 || segment.slice(0, at).trim() !== cookieName) continue
+    return segment.slice(at + 1).trim()
+  }
+  return undefined
+}
+
 /** Services required before the authenticated fallback seat can be claimed. */
 export const inject = ['webServer', 'connection']
 
@@ -34,10 +56,18 @@ export const inject = ['webServer', 'connection']
 export interface Config {
   /** Absolute path of index.html inside the dist root. */
   distIndex: string
+  /**
+   * Optional secret path segment gating the SPA index. When set, the index
+   * renders only for a request carrying the matching gate cookie; visiting
+   * `/<secretPath>` sets that cookie and redirects to the clean root. Bare `/`
+   * without it returns 404 (no page). Unset leaves the index ungated.
+   */
+  secretPath?: string
 }
 
 export const Config: z<Config> = z.object({
   distIndex: z.string().required(),
+  secretPath: z.string(),
 })
 
 const HTML_MIME = 'text/html; charset=utf-8'
@@ -133,6 +163,7 @@ async function serveStatic(
 export function apply(ctx: Context, config: Config): void {
   const distIndex = config.distIndex
   const distRoot = dirname(distIndex)
+  const secretPath = config.secretPath
   // Connection's browser authentication writes the token exchange's 303 or
   // the 401 through a writeHead/end response; capture it as a Fetch response.
   // The answer stays a 401 unless Connection writes another one.
@@ -150,18 +181,40 @@ export function apply(ctx: Context, config: Config): void {
     return admitted ? undefined : new Response(body, { status, headers })
   }
   ctx.effect(() => ctx.webServer.registerFallback({
-    resource: (request, peer) => serveStatic(
-      request,
-      distRoot,
-      distIndex,
-      // A read with a Peer was admitted by its caller; an HTTP request carries
-      // none and passes Connection's browser authentication instead.
-      () => peer === undefined ? authorizeIndex(request) : undefined,
-      // The browser authentication admits the owner's shared browser Peer. The
-      // base goes in after all index transforms, so it precedes every resource
-      // reference they insert.
-      html => ctx.webServer.renderIndex(html, peer ?? ctx.connection.browserPeer)
-        .replace(/<head(?:\s[^>]*)?>/i, open => `${open}<base href="./">`),
-    ),
+    resource: (request, peer) => {
+      const requestUrl = new URL(request.url)
+      const pathname = decodeURIComponent(requestUrl.pathname)
+      // The secret-path knock is an HTTP-only reachability gate. In-process
+      // reads already carry an admitted Peer and bypass both it and browser auth.
+      if (peer === undefined && secretPath !== undefined && request.method === 'GET'
+        && (pathname === `/${secretPath}` || pathname === `/${secretPath}/`)) {
+        return new Response(null, {
+          status: 303,
+          headers: {
+            'cache-control': 'no-store',
+            location: './',
+            'set-cookie': `${GATE_COOKIE}=${encodeURIComponent(secretPath)}; Max-Age=${String(GATE_COOKIE_MAX_AGE_SECONDS)}; Path=/; HttpOnly; SameSite=Lax`,
+          },
+        })
+      }
+      const sharing = requestUrl.searchParams.has('share')
+      return serveStatic(
+        request,
+        distRoot,
+        distIndex,
+        () => {
+          if (peer !== undefined) return undefined
+          if (secretPath !== undefined && !sharing
+            && readCookie(request, GATE_COOKIE) !== encodeURIComponent(secretPath)) {
+            return new Response(null, { status: 404 })
+          }
+          return authorizeIndex(request)
+        },
+        // The browser authentication admits the owner's shared browser Peer.
+        // The base goes in after all transforms and precedes their resources.
+        html => ctx.webServer.renderIndex(html, peer ?? ctx.connection.browserPeer)
+          .replace(/<head(?:\s[^>]*)?>/i, open => `${open}<base href="./">`),
+      )
+    },
   }), 'frontend-static: fallback seat')
 }

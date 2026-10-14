@@ -26,7 +26,7 @@ import type {
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { RemoteEndpoint } from '@deepseek-ai/dsh-api-remote-access/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
+import { shareLinkFor, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only: pulls the Controller service merges.
@@ -43,7 +43,7 @@ import {
   type ArchiveSessionInjected, type ForkSessionInjected, menuOpenStateFactory, type PinSessionInjected,
   type SessionArchiveConfirmInjected, type SessionArchiveConfirmRequest,
   type RenameSessionInjected, type RowToast, type RowToastInjected, type RowToastState, type SessionRenameDialogInjected,
-  type WorkspaceActionRequest, type SessionIdInjected, type WorkspaceBrowserInjected, type WorkspacePickerInjected,
+  type WorkspaceActionRequest, type SessionIdInjected, type ShareSessionInjected, type WorkspaceBrowserInjected, type WorkspacePickerInjected,
 } from './contract/slots.ts'
 import { createWorkspaceShortcutControls, installWorkspaceShortcuts } from './shortcuts.ts'
 import { UiWorkspaceService } from './navigation.ts'
@@ -54,6 +54,7 @@ import { derive } from './session-actions/derived.ts'
 import { registerSessionMenus } from './session-actions/context-menus.tsx'
 import { PinSessionRowButton } from './session-actions/PinSession.tsx'
 import { SessionRenameDialog } from './session-actions/RenameSession.tsx'
+import { ShareSessionMenuItem } from './session-actions/ShareSession.tsx'
 import { RowActionToast } from './session-actions/RowActionToast.tsx'
 import { registerToasts } from './toast/register.ts'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
@@ -241,6 +242,13 @@ export function apply(ctx: Context): void {
     },
   })
   const renameInjected = (): RenameSessionInjected => ({ requestSessionRename })
+  const shareInjected = (): ShareSessionInjected => ({
+    shareSession: (sessionId) => {
+      writeClipboard(shareLinkFor(sessionId)).then((ok) => {
+        notify(ok ? { kind: 'shareCopied' } : { kind: 'shareFailed' })
+      }).catch(() => { notify({ kind: 'shareFailed' }) })
+    },
+  })
   const renameDialogInjected = (): SessionRenameDialogInjected => ({
     hooks: { renameRequest },
     settleSessionRename: shortcutControls.closeRename,
@@ -342,6 +350,11 @@ export function apply(ctx: Context): void {
   registerSessionMenus(ctx, {
     ...pinInjected(), ...archiveInjected(), ...renameInjected(), ...forkInjected(), ...sessionIdInjected(),
   })
+  // The share entry predates the structured menu service: it stays a legacy
+  // Slot entry, rendered by the Session menu adapter after the built-in rows.
+  ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register({
+    name: 'sidebar.workspaces.session.menu.item', id: 'share', order: 500, locale: NS, inject: shareInjected,
+  }, ShareSessionMenuItem))
   ctx.slots.inject('sidebar.workspaces.session.row.action', function* () {
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.row.action', id: 'archive', order: 100, locale: NS, inject: archiveInjected }, ArchiveSessionRowButton)
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.row.action', id: 'pin', order: 200, locale: NS, inject: pinInjected }, PinSessionRowButton)

@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { shareSessionId } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -169,7 +170,14 @@ export function AppFrame({
 
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
   const windowsTitlebar = document.documentElement.hasAttribute('data-windows-titlebar')
-  const drawer = viewport < SIDEBAR_DRAWER_BREAKPOINT && !windowsTitlebar
+  // Share mode (opened from a share link): the sidebar is the only surface
+  // that lists, searches, or starts other sessions, so hiding it confines
+  // this page to the one shared session. Read once at mount — a share link is
+  // a fresh page load, never an in-place hash edit.
+  const shared = useMemo(() => shareSessionId() !== undefined, [])
+  // A shared page keeps the sidebar track at zero width and has nothing for a
+  // drawer to reveal.
+  const drawer = viewport < SIDEBAR_DRAWER_BREAKPOINT && !windowsTitlebar && !shared
   const centeredSidebar = foldedLandscape && viewport >= SIDEBAR_DRAWER_BREAKPOINT
   const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
   const drawerOpen = drawer && !sidebarCollapsed
@@ -186,13 +194,15 @@ export function AppFrame({
   // the Windows caption row; neither platform keeps an icon rail.
   const darwin = document.documentElement.dataset.platform === 'darwin'
   const collapsedWidth = drawer || darwin || windowsTitlebar ? 0 : SIDEBAR_COLLAPSED
+  const effectiveCollapsedWidth = shared ? 0 : collapsedWidth
+  const effectiveSidebarPreference = shared ? 0 : sidebarPreference
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
   const normal = computeColumns(
-    viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth, centeredSidebar,
+    viewport, !layoutInfo.rightbarShown && narrow ? 0 : effectiveSidebarPreference, rightbarPreference, effectiveCollapsedWidth, centeredSidebar,
   )
   const cols = computeColumns(
-    viewport, drawer ? 0 : sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, collapsedWidth, centeredSidebar,
+    viewport, shared || drawer ? 0 : effectiveSidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, effectiveCollapsedWidth, centeredSidebar,
   )
   const colsRef = useRef(cols)
   colsRef.current = cols
@@ -270,11 +280,11 @@ export function AppFrame({
   const sidebarWidth = drawer
     ? Math.min(layoutInfo.sidebar || SIDEBAR_DEFAULT, Math.max(0, viewport - 48))
     : cols.sidebar
-  const sidebar = useMemo(() => renderSlot('sidebar', {
+  const sidebar = useMemo(() => shared ? null : renderSlot('sidebar', {
     collapsed: sidebarCollapsed,
     width: sidebarWidth,
     drawer,
-  }), [renderSlot, sidebarCollapsed, sidebarWidth, drawer])
+  }), [shared, renderSlot, sidebarCollapsed, sidebarWidth, drawer])
   const main = useMemo(() => (
     <MainPanel usePanelInfo={usePanelInfo} renderSlot={renderSlot} />
   ), [usePanelInfo, renderSlot])
@@ -283,7 +293,7 @@ export function AppFrame({
   // Windows native captions keep their controls in the caption row instead.
   // AppFrame.module.css reserves clearance for the seat's rendered controls.
   const leading = useMemo(() => renderSlot('shell.leading', {}), [renderSlot])
-  const leadingMounted = drawer || darwin && sidebarCollapsed
+  const leadingMounted = (drawer || darwin && sidebarCollapsed) && !shared
 
   return (
     <div
@@ -333,8 +343,9 @@ export function AppFrame({
           {leading}
         </div>
       )}
-      {/* The collapsed rail is fixed-width: no resize handle while closed. */}
-      {!drawer && !centeredSidebar && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+      {/* The collapsed rail is fixed-width: no resize handle while closed.
+          Share mode has no sidebar column, so it carries no handle either. */}
+      {!shared && !drawer && !centeredSidebar && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
       {layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && (
         <DragHandle side="rightbar" left={viewport - normal.rightbar} onStart={onRightbarStart} onDrag={onRightbarDrag} onEnd={onDragEnd} />
       )}
