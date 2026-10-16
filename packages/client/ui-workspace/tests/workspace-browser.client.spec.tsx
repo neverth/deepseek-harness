@@ -136,6 +136,11 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     unarchiveSession: vi.fn(async () => {}),
     insertWorkspaceBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
+    // Hand-made groups are browser-local: the injected callbacks are the store
+    // writes, so the fixture wires them the way the plugin does.
+    createCustomGroup: (name: string) => { store.actions.createCustomGroup(name) },
+    renameCustomGroup: (groupId: string, name: string) => { store.actions.renameCustomGroup(groupId, name) },
+    deleteCustomGroup: (groupId: string) => { store.actions.deleteCustomGroup(groupId) },
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
     renderSlot: renderDirectoryFlowOnly,
@@ -163,7 +168,7 @@ describe('WorkspaceBrowser', () => {
     preferences.actions.setSessionOrder(FLAT_SESSION_ORDER_KEY, ['older', 'newer'], {})
     preferences.actions.setGroupExpanded(account, true)
     preferences.actions.setGroupExpanded(UNGROUPED_KEY, true)
-    localStorage.setItem('dsh.workspace.view.v5', JSON.stringify({ ...preferences.getSnapshot(), orderBy: 'updated' }))
+    localStorage.setItem('dsh.workspace.view.v6', JSON.stringify({ ...preferences.getSnapshot(), orderBy: 'updated' }))
     const b = mount({
       useSessions: hook(sessionState([summary('newer', 100)])),
       useWorkspaces: hook(workspaceState(mode === 'ungrouped' ? [] : [workspace(account, ['older', 'newer'])])),
@@ -396,26 +401,35 @@ describe('WorkspaceBrowser', () => {
 
   it('drops the obsolete timestamp ledger from persisted viewing state', async () => {
     localStorage.clear()
-    localStorage.setItem('dsh.workspace.view.v5', JSON.stringify({
+    localStorage.setItem('dsh.workspace.view.v6', JSON.stringify({
       groupBy: 'workspace',
       orderBy: 'manual',
       groupExpansion: {},
       sessionOrderByAccount: {},
+      customGroups: [],
+      customMembers: {},
+      customGroupSeq: 0,
       sessionUpdatedAtByAccount: { alpha: { old: 10 } },
     }))
     mount()
     await waitFor(() => {
-      const persisted = JSON.parse(localStorage.getItem('dsh.workspace.view.v5') ?? '{}') as Record<string, unknown>
+      const persisted = JSON.parse(localStorage.getItem('dsh.workspace.view.v6') ?? '{}') as Record<string, unknown>
       expect(persisted).not.toHaveProperty('sessionUpdatedAtByAccount')
     })
   })
 
-  it('hides archived Sessions when a persisted v5 view has no archived filter', () => {
-    const key = 'dsh.workspace.view.v5'
+  it('hides archived Sessions when a persisted view has no archived filter', () => {
+    const key = 'dsh.workspace.view.v6'
     const previous = localStorage.getItem(key)
     try {
       localStorage.setItem(key, JSON.stringify({
-        groupBy: 'workspace', orderBy: 'manual', groupExpansion: { alpha: true }, sessionOrderByAccount: {},
+        groupBy: 'workspace',
+        orderBy: 'manual',
+        groupExpansion: { alpha: true },
+        sessionOrderByAccount: {},
+        customGroups: [],
+        customMembers: {},
+        customGroupSeq: 0,
       }))
       const b = mount({
         useSessions: hook(sessionState([summary('alive', 2), summary('gone', 1)])),
@@ -450,7 +464,7 @@ describe('WorkspaceBrowser', () => {
     expect(screen.getByText('分组方式')).toBeTruthy() // the menu heading label
     expect(screen.getAllByRole('separator')).toHaveLength(2)
     expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
-      '按工作区', '按工作区树', '单列表', '手动排序', '最近更新', '隐藏已归档', '全部对话（显示已归档）', '仅显示已归档',
+      '按工作区', '按工作区树', '单列表', '自定义分组', '手动排序', '最近更新', '隐藏已归档', '全部对话（显示已归档）', '仅显示已归档',
     ])
     expect(screen.getByRole('menuitem', { name: '按工作区' }).querySelector('svg')).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: '手动排序' }).querySelector('svg')).toBeTruthy()
@@ -2658,5 +2672,269 @@ describe('Workspace tree grouping', () => {
     fireEvent.dragEnd(alpha)
     expect(b.props.insertWorkspaceBefore).toHaveBeenCalledOnce()
     expect(b.props.insertWorkspaceBefore).toHaveBeenCalledWith(wid('alpha'), wid('gamma'))
+  })
+})
+
+describe('custom grouping', () => {
+  /** Rows in render order: the header row of each section, then its Session rows. */
+  const sectionTitles = (): (string | null)[] => screen.getAllByRole('treeitem')
+    .map(row => row.querySelector('[class*="title"]')?.textContent ?? null)
+
+  const groupHeader = (name: string): HTMLElement =>
+    screen.getByRole('treeitem', { name: new RegExp(name) })
+
+  function switchToCustom(): void {
+    fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '自定义分组' }))
+  }
+
+  function mountCustom() {
+    const b = mount({
+      useSessions: hook(sessionState([summary('alpha-s', 3), summary('beta-s', 2), summary('gamma-s', 1)])),
+    })
+    switchToCustom()
+    return b
+  }
+
+  /** Type a name into the header's new-group field and commit it. */
+  function createGroup(name: string): void {
+    fireEvent.click(screen.getByRole('button', { name: '新建分组' }))
+    const field = screen.getByRole('textbox', { name: '分组名称' })
+    fireEvent.change(field, { target: { value: name } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+  }
+
+  it('offers the hand-made mode in Group by and labels the section 会话', () => {
+    const b = mountCustom()
+    expect(b.store.getSnapshot().groupBy).toBe('custom')
+    expect(screen.getByText('会话')).toBeTruthy()
+    // The mode replaces the Workspace add action with the one it needs.
+    expect(screen.getByRole('button', { name: '新建分组' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '添加工作区' })).toBeNull()
+    // No group yet: every Session sits in the bucket.
+    expect(sectionTitles()).toEqual(['未分组', 'alpha-s', 'beta-s', 'gamma-s'])
+  })
+
+  it('creates a named group from the section header and opens it', () => {
+    const b = mountCustom()
+    createGroup('运维排查')
+    expect(b.store.getSnapshot().customGroups).toEqual([{ id: 'custom:1', name: '运维排查' }])
+    expect(b.store.getSnapshot().groupExpansion['custom:1']).toBe(true)
+    expect(sectionTitles()).toEqual(['运维排查', '未分组', 'alpha-s', 'beta-s', 'gamma-s'])
+  })
+
+  it('cancels a new group on Escape and on a name that is only whitespace', () => {
+    const b = mountCustom()
+    fireEvent.click(screen.getByRole('button', { name: '新建分组' }))
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '分组名称' }), { key: 'Escape' })
+    expect(screen.queryByRole('textbox', { name: '分组名称' })).toBeNull()
+    expect(b.store.getSnapshot().customGroups).toEqual([])
+
+    fireEvent.click(screen.getByRole('button', { name: '新建分组' }))
+    const field = screen.getByRole('textbox', { name: '分组名称' })
+    fireEvent.change(field, { target: { value: '   ' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    expect(b.store.getSnapshot().customGroups).toEqual([])
+  })
+
+  it('renames a group through its own menu and refuses a duplicate name', () => {
+    const b = mountCustom()
+    createGroup('运维排查')
+    createGroup('Web UI')
+    fireEvent.click(screen.getByRole('button', { name: '分组“运维排查”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }))
+    const field = screen.getByRole('textbox', { name: '分组名称' })
+    fireEvent.change(field, { target: { value: 'Web UI' } })
+    expect(screen.getByRole('button', { name: '重命名' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.change(field, { target: { value: '值班' } })
+    fireEvent.click(screen.getByRole('button', { name: '重命名' }))
+    expect(b.store.getSnapshot().customGroups.map(group => group.name)).toEqual(['值班', 'Web UI'])
+  })
+
+  it('deletes a group and keeps no membership record for it', () => {
+    const b = mountCustom()
+    createGroup('运维排查')
+    act(() => { b.store.actions.moveCustomMember(sid('alpha-s'), 'custom:1') })
+    fireEvent.click(screen.getByRole('button', { name: '分组“运维排查”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除分组' }))
+    expect(b.store.getSnapshot().customGroups).toEqual([])
+    expect(b.store.getSnapshot().customMembers).toEqual({})
+    expect(b.store.getSnapshot().groupExpansion['custom:1']).toBeUndefined()
+    // Its member returns to the bucket rather than disappearing.
+    expect(sectionTitles()).toEqual(['未分组', 'alpha-s', 'beta-s', 'gamma-s'])
+  })
+
+  it('moves a Session into a group by dropping it on that group header', () => {
+    const b = mountCustom()
+    createGroup('运维排查')
+    const row = screen.getByRole('treeitem', { name: /alpha-s/ })
+    fireEvent.dragStart(row, { dataTransfer: dragData() })
+    fireDrag(groupHeader('运维排查'), 'dragOver', 10)
+    fireDrag(groupHeader('运维排查'), 'drop', 10)
+    expect(b.store.getSnapshot().customMembers['custom:1']).toEqual(['alpha-s'])
+    expect(sectionTitles()).toEqual(['运维排查', 'alpha-s', '未分组', 'beta-s', 'gamma-s'])
+  })
+
+  it('moves a Session between groups and back to the bucket', () => {
+    const b = mountCustom()
+    createGroup('运维排查')
+    createGroup('Web UI')
+    act(() => { b.store.actions.moveCustomMember(sid('alpha-s'), 'custom:1') })
+    act(() => { b.store.actions.moveCustomMember(sid('beta-s'), 'custom:2') })
+
+    const moved = screen.getByRole('treeitem', { name: /alpha-s/ })
+    fireEvent.dragStart(moved, { dataTransfer: dragData() })
+    fireDrag(groupHeader('Web UI'), 'dragOver', 10)
+    fireDrag(groupHeader('Web UI'), 'drop', 10)
+    expect(b.store.getSnapshot().customMembers['custom:2']).toEqual(['beta-s', 'alpha-s'])
+    expect(b.store.getSnapshot().customMembers['custom:1']).toEqual([])
+
+    const back = screen.getByRole('treeitem', { name: /alpha-s/ })
+    fireEvent.dragStart(back, { dataTransfer: dragData() })
+    fireDrag(groupHeader('未分组'), 'dragOver', 10)
+    fireDrag(groupHeader('未分组'), 'drop', 10)
+    expect(b.store.getSnapshot().customMembers['custom:2']).toEqual(['beta-s'])
+    expect(sectionTitles()).toEqual(['运维排查', 'Web UI', 'beta-s', '未分组', 'alpha-s', 'gamma-s'])
+  })
+
+  it('reorders inside one group and records the position before the target row', () => {
+    const b = mountCustom()
+    createGroup('运维排查')
+    act(() => {
+      b.store.actions.moveCustomMember(sid('alpha-s'), 'custom:1')
+      b.store.actions.moveCustomMember(sid('beta-s'), 'custom:1')
+      b.store.actions.moveCustomMember(sid('gamma-s'), 'custom:1')
+    })
+    const source = screen.getByRole('treeitem', { name: /gamma-s/ })
+    const target = screen.getByRole('treeitem', { name: /alpha-s/ })
+    target.getBoundingClientRect = () => ({
+      top: 100, bottom: 134, left: 0, right: 200, width: 200, height: 34, x: 0, y: 100, toJSON: () => ({}),
+    })
+    fireEvent.dragStart(source, { dataTransfer: dragData() })
+    fireDrag(target, 'drop', 104)
+    expect(b.store.getSnapshot().customMembers['custom:1']).toEqual(['gamma-s', 'alpha-s', 'beta-s'])
+  })
+
+  it('keeps the row target when a hover over the row precedes the drop', () => {
+    const b = mountCustom()
+    createGroup('运维排查')
+    act(() => {
+      b.store.actions.moveCustomMember(sid('alpha-s'), 'custom:1')
+      b.store.actions.moveCustomMember(sid('beta-s'), 'custom:1')
+      b.store.actions.moveCustomMember(sid('gamma-s'), 'custom:1')
+    })
+    const source = screen.getByRole('treeitem', { name: /gamma-s/ })
+    const target = screen.getByRole('treeitem', { name: /alpha-s/ })
+    target.getBoundingClientRect = () => ({
+      top: 100, bottom: 134, left: 0, right: 200, width: 200, height: 34, x: 0, y: 100, toJSON: () => ({}),
+    })
+    fireEvent.dragStart(source, { dataTransfer: dragData() })
+    // The section is the header's drop target too; a hover over a row must not
+    // hand the pointer back to the section, or the drop would append.
+    fireDrag(target, 'dragOver', 104)
+    fireDrag(target, 'drop', 104)
+    expect(b.store.getSnapshot().customMembers['custom:1']).toEqual(['gamma-s', 'alpha-s', 'beta-s'])
+  })
+
+  it('reorders groups by dragging one header onto another', () => {
+    const b = mountCustom()
+    createGroup('first')
+    createGroup('second')
+    createGroup('third')
+    const names = () => b.store.getSnapshot().customGroups.map(group => group.name)
+    expect(names()).toEqual(['first', 'second', 'third'])
+
+    const third = groupHeader('third')
+    const first = groupHeader('first')
+    first.getBoundingClientRect = () => ({
+      top: 100, bottom: 134, left: 0, right: 200, width: 200, height: 34, x: 0, y: 100, toJSON: () => ({}),
+    })
+    fireEvent.dragStart(third, { dataTransfer: dragData() })
+    fireDrag(first, 'dragOver', 104)
+    expect(sectionTitles().slice(0, 3)).toEqual(['first', 'second', 'third'])
+    fireDrag(first, 'drop', 104)
+    // Dropped on the lower half of `first`, so `third` lands after it.
+    expect(names()).toEqual(['first', 'third', 'second'])
+    expect(sectionTitles().slice(0, 3)).toEqual(['first', 'third', 'second'])
+  })
+
+  it('reorders groups when a hovering drag sends a second dragover in one commit', async () => {
+    const b = mountCustom()
+    createGroup('first')
+    createGroup('second')
+    const second = groupHeader('second')
+    fireEvent.dragStart(groupHeader('first'), { dataTransfer: dragData() })
+    // A real drag repeats dragover: the second hover finds a fiber that already
+    // has a pending update, so React defers that updater to the render pass,
+    // where the event's `currentTarget` is null and the pointer side is gone.
+    await act(async () => {
+      fireDrag(second, 'dragOver', 100)
+      fireDrag(second, 'dragOver', 100)
+    })
+    fireDrag(second, 'drop', 100)
+    expect(b.store.getSnapshot().customGroups.map(group => group.name)).toEqual(['second', 'first'])
+    expect(sectionTitles().slice(0, 2)).toEqual(['second', 'first'])
+  })
+
+  it('appends a group when the drop lands on the ungrouped bucket', () => {
+    const b = mountCustom()
+    createGroup('first')
+    createGroup('second')
+    createGroup('third')
+    const bucket = groupHeader('未分组')
+    bucket.getBoundingClientRect = () => ({
+      top: 300, bottom: 334, left: 0, right: 200, width: 200, height: 34, x: 0, y: 300, toJSON: () => ({}),
+    })
+    fireEvent.dragStart(groupHeader('first'), { dataTransfer: dragData() })
+    fireDrag(bucket, 'dragOver', 304)
+    fireDrag(bucket, 'drop', 304)
+    // The bucket stays last and is not an order member, so the group lands at
+    // the end of the hand-made order instead of vanishing behind it.
+    expect(b.store.getSnapshot().customGroups.map(group => group.name)).toEqual(['second', 'third', 'first'])
+    expect(sectionTitles().slice(0, 4)).toEqual(['second', 'third', 'first', '未分组'])
+  })
+
+  it('appends a group when the drag ends over the bucket without a drop', () => {
+    const b = mountCustom()
+    createGroup('first')
+    createGroup('second')
+    const bucket = groupHeader('未分组')
+    bucket.getBoundingClientRect = () => ({
+      top: 300, bottom: 334, left: 0, right: 200, width: 200, height: 34, x: 0, y: 300, toJSON: () => ({}),
+    })
+    const first = groupHeader('first')
+    fireEvent.dragStart(first, { dataTransfer: dragData() })
+    fireDrag(bucket, 'dragOver', 304)
+    fireEvent.dragEnd(first, { dataTransfer: dragData() })
+    expect(b.store.getSnapshot().customGroups.map(group => group.name)).toEqual(['second', 'first'])
+    expect(sectionTitles().slice(0, 3)).toEqual(['second', 'first', '未分组'])
+  })
+
+  it('does not treat the bucket header as draggable', () => {
+    mountCustom()
+    createGroup('first')
+    expect(groupHeader('未分组').getAttribute('draggable')).toBe('false')
+    expect(groupHeader('first').getAttribute('draggable')).toBe('true')
+  })
+
+  it('folds and unfolds a group without losing its members', () => {
+    const b = mountCustom()
+    createGroup('运维排查')
+    act(() => { b.store.actions.moveCustomMember(sid('alpha-s'), 'custom:1') })
+    fireEvent.click(groupHeader('运维排查'))
+    expect(b.store.getSnapshot().groupExpansion['custom:1']).toBe(false)
+    expect(sectionTitles()).toEqual(['运维排查', '未分组', 'beta-s', 'gamma-s'])
+    fireEvent.click(groupHeader('运维排查'))
+    expect(sectionTitles()).toEqual(['运维排查', 'alpha-s', '未分组', 'beta-s', 'gamma-s'])
+  })
+
+  it('keeps a group across a remount through the persisted view', () => {
+    const b = mountCustom()
+    createGroup('运维排查')
+    act(() => { b.store.actions.moveCustomMember(sid('alpha-s'), 'custom:1') })
+    b.view.unmount()
+    mount({ useSessions: hook(sessionState([summary('alpha-s', 3), summary('beta-s', 2)])) })
+    switchToCustom()
+    expect(sectionTitles()).toEqual(['运维排查', 'alpha-s', '未分组', 'beta-s'])
   })
 })

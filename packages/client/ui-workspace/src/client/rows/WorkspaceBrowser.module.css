@@ -444,6 +444,13 @@
   position: relative;
 }
 
+/* A hand-made section under an incoming row drag: the header is the target. */
+.groupDropTarget > .projectRow {
+  background: var(--dsw-alias-interactive-bg-hover);
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -1px;
+}
+
 .groupSection + .groupSection {
   margin-top: 4px;
 }
@@ -599,6 +606,78 @@
 
 .archiveActivity li {
   overflow-wrap: anywhere;
+}
+
+/* Group picker dialog: a listbox of the hand-made groups plus the removal row. */
+.groupPickerList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groupPickerOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupPickerOption:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The current group keeps the same row shape; only the glyph and name tint it. */
+.groupPickerOptionCurrent {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.groupPickerName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupPickerEmpty {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The new-group name field inside the section header, sized to its row. */
+.newGroupRow {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 8px;
+}
+
+.newGroupInput {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-sm);
+  outline: none;
+  background: var(--dsw-alias-button-elevated-fill);
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.newGroupInput::placeholder {
+  color: var(--dsw-alias-label-caption);
 }
 
 @media (prefers-reduced-motion: reduce) {
