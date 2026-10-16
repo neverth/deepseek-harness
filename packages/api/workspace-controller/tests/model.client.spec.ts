@@ -21,6 +21,8 @@ import type {
   WorkspaceValue,
   WorkspaceId,
   WorkspaceView,
+  WorkspaceViewSnapshot,
+  WorkspaceViewSnapshotRequest,
 } from '../src/types.ts'
 import { RemoteError, type RemoteFailure, type RemoteResult, type RemoteStreamHandle } from '@deepseek-ai/dsh-typert-protocol'
 import { streamHandle } from '@deepseek-ai/dsh-remote-mock'
@@ -146,6 +148,18 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   unpinSession(request: WorkspaceUnpinSessionRequest): Promise<RemoteResult<WorkspacePinValue>> {
     this.record('unpinSession', request)
     return this.onUnpinSession(request)
+  }
+
+  onSaveViewSnapshot: (
+    request: WorkspaceViewSnapshotRequest,
+  ) => Promise<RemoteResult<WorkspaceViewSnapshot>> = request =>
+    Promise.resolve(remoteOk({ takenAt: '2026-01-01T00:00:00.000Z', document: request.document }))
+
+  saveViewSnapshot(
+    request: WorkspaceViewSnapshotRequest,
+  ): Promise<RemoteResult<WorkspaceViewSnapshot>> {
+    this.record('saveViewSnapshot', request)
+    return this.onSaveViewSnapshot(request)
   }
 
   follow(_signal?: AbortSignal): RemoteStreamHandle<WorkspaceFollowFrame, never> {

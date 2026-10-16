@@ -223,5 +223,8 @@ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState
   })
 }
 
+/** One live view-store instance (what the browser renders and the Host snapshot mirror reads). */
+export type WorkspaceViewInstance = ReturnType<ReturnType<typeof createWorkspaceViewStore>['create']>
+
 /** The bound write set of one viewing-store instance (what the UiWorkspace service drives). */
 export type WorkspaceViewStoreActions = ReturnType<ReturnType<typeof createWorkspaceViewStore>['create']>['actions']

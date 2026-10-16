@@ -4,7 +4,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { WorkspaceView } from '../types.ts'
+import type { WorkspaceView, WorkspaceViewDocument } from '../types.ts'
 import type { ClientWorkspaceModel, WorkspaceSnapshot } from './model.ts'
 
 /** Structured create failure for callers that distinguish Host business errors. */
@@ -101,6 +101,12 @@ export interface IWorkspaces {
    */
   unpinSession(sessionId: SessionId): Promise<void>
   /**
+   * Push one snapshot of this browser's sidebar view document. The Host keeps
+   * the newest snapshots, so a lost browser copy stays recoverable.
+   * @param document - the complete current document.
+   */
+  saveViewSnapshot(document: WorkspaceViewDocument): Promise<void>
+  /**
    * Move a Session within one Workspace account.
    * @param workspaceId - owning Workspace.
    * @param sessionId - Session to move.
@@ -173,6 +179,11 @@ export class WorkspaceController extends Service implements IWorkspaces {
   async unpinSession(sessionId: SessionId): Promise<void> {
     const result = await this.model.unpinSession(sessionId)
     if (!result.ok) throw commandError('session unpin', result.error)
+  }
+
+  async saveViewSnapshot(document: WorkspaceViewDocument): Promise<void> {
+    const result = await this.model.saveViewSnapshot(document)
+    if (!result.ok) throw commandError('view snapshot', result.error)
   }
 
   async insertSessionBefore(

@@ -49,6 +49,7 @@ import {
 import { createWorkspaceShortcutControls, installWorkspaceShortcuts } from './shortcuts.ts'
 import { UiWorkspaceService } from './navigation.ts'
 import { createWorkspaceViewStore } from './stores.ts'
+import { mirrorViewSnapshots } from './view-host.ts'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
 import { derive } from './session-actions/derived.ts'
@@ -124,6 +125,9 @@ export function apply(ctx: Context): void {
   // view order through the same instance the renderer hands the browser.
   const viewHandle = createWorkspaceViewStore()
   const viewInstance = viewHandle.create()
+  // Local storage stays this browser's source of truth; the Host keeps the
+  // newest snapshots so a lost browser copy stays recoverable.
+  ctx.effect(() => mirrorViewSnapshots(workspaces, viewInstance), 'ui-workspace: view snapshots')
   const viewStore: typeof viewHandle = { ...viewHandle, create: () => viewInstance }
   const rowToast = createSnapshotStore<RowToastState | null>(null)
   let toastSeq = 0
