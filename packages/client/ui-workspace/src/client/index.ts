@@ -12,8 +12,9 @@
  * `shell.overlay` (see the contract module doc). It also declares two
  * Session-row seats: the leading decoration a row renders only while its own
  * primary state is idle, and the section the row's hover card renders between
- * its relative time and its trailing status line. Export discipline:
- * packages/client/AGENTS.md.
+ * its relative time and its trailing status line. It also contributes the
+ * conversation header's working-directory chip beside the Session title.
+ * Export discipline: packages/client/AGENTS.md.
  */
 import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
 import type { Context } from '@deepseek-ai/cordis'
@@ -58,6 +59,7 @@ import { RowActionToast } from './session-actions/RowActionToast.tsx'
 import { registerToasts } from './toast/register.ts'
 import { SessionIdMenuItem } from './session-actions/SessionId.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
+import { WorkingDirectory, type WorkingDirectoryInjected } from './WorkingDirectory.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
 
 export type { StartSessionOptions, UiWorkspace } from './navigation.ts'
@@ -103,6 +105,7 @@ const NS = 'workspace'
  */
 export const inject = [
   'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts', 'remoteAccess',
+  'uiSession',
 ]
 
 /**
@@ -279,6 +282,7 @@ export function apply(ctx: Context): void {
     searchResultLimit: sessions.searchResultLimit,
     requestSessionRename,
     notifyArchivedNotOpenable: () => { notify({ kind: 'archivedNotOpenable' }) },
+    acknowledgeCompletion: (sessionId) => { ctx.uiSession.acknowledgeCompletion(sessionId) },
     renameWorkspace: async (workspaceId, title) => { await workspaces.rename(workspaceId, title) },
     deleteWorkspace: async (workspaceId) => { await workspaces.delete(workspaceId) },
     insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
@@ -296,6 +300,14 @@ export function apply(ctx: Context): void {
     createWorkspace: input => workspaces.create(input),
     hooks: { directoryFlow: pickerFlowSource },
   })
+  // The Session's directory is a header fact, so its chip joins the
+  // conversation header's action band ahead of the Agent Teams trigger.
+  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+    name: 'conversation.session.header.actions',
+    id: 'working-directory',
+    order: -30,
+    inject: (): WorkingDirectoryInjected => ({ hooks: { hostInfo } }),
+  }, WorkingDirectory))
   // Each registration declares its owned children in the same call; slot
   // injection follows both the owner and declaration HMR lifetimes.
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(

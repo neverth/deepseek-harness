@@ -1,0 +1,23 @@
+/* Matches the header's other action chips (the Agent Teams trigger): the same
+   28px row and 12px tertiary text, so the directory reads as a Session fact
+   beside them rather than as a control of its own. */
+.cwd {
+  display: inline-flex;
+  align-items: center;
+  max-width: 260px;
+  min-height: 28px;
+  padding: 3px 7px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* With the header container narrowed, the path is the first thing to go: the
+   title and the actions beside it answer more questions than a truncated path. */
+@container (max-width: 480px) {
+  .cwd {
+    display: none;
+  }
+}

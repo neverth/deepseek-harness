@@ -291,6 +291,8 @@ type SessionTreeProps = Pick<
   onDeleteRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
   /** Open the rename dialog from a row title double-click. */
   onSessionRenameRequest: (sessionId: SessionNode['id'], currentTitle: string) => void
+  /** Clear a completion reminder the user confirmed. */
+  onAcknowledge: (sessionId: SessionNode['id']) => void
   /** One Session chosen from search that must be exposed and scrolled into view. */
   revealSessionId?: SessionId | undefined
   /** Acknowledge that the chosen Session row has been revealed. */
@@ -318,7 +320,7 @@ function SessionTree({
   list, useSessionStatus, startSession, open, workspaces, ungroupedSessionIds,
   rowState, onLeaveArchivedOnly,
   workspaceReady, animationResetKey, usePanelInfo,
-  onRenameRequest, onDeleteRequest, onSessionRenameRequest,
+  onRenameRequest, onDeleteRequest, onSessionRenameRequest, onAcknowledge,
   renderSlot,
   insertWorkspaceBefore,
   nestWorkspaces, groupExpansion, setGroupExpanded,
@@ -628,6 +630,7 @@ function SessionTree({
               now={now}
               onOpen={open}
               onRenameRequest={onSessionRenameRequest}
+              onAcknowledge={onAcknowledge}
               renderSlot={renderSlot}
               onReveal={node.id === revealSessionId && group.key === revealGroup
                 ? () => { onSessionRevealed(node.id) }
@@ -688,13 +691,14 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   list, sessionIds, rowState, onLeaveArchivedOnly, useSessionStatus, open, onSessionRenameRequest,
-  usePanelInfo, setSessionOrder, workspaceReady, animationResetKey,
+  onAcknowledge, usePanelInfo, setSessionOrder, workspaceReady, animationResetKey,
   revealSessionId, onSessionRevealed, renderSlot, t,
 }: Pick<
   SessionTreeProps,
   | 'useSessionStatus'
   | 'open'
   | 'onSessionRenameRequest'
+  | 'onAcknowledge'
   | 'renderSlot'
   | 'usePanelInfo'
   | 'setSessionOrder'
@@ -753,6 +757,7 @@ function FlatList({
               now={now}
               onOpen={open}
               onRenameRequest={onSessionRenameRequest}
+              onAcknowledge={onAcknowledge}
               renderSlot={renderSlot}
               onReveal={node.id === revealSessionId
                 ? () => { onSessionRevealed(node.id) }
@@ -801,6 +806,7 @@ function SearchResults({
   useSessionStatus,
   open,
   onUnarchive,
+  onAcknowledge,
   workspaces,
   archivedSessionIds,
   archivedFilter,
@@ -816,6 +822,8 @@ function SearchResults({
   archivedFilter: ArchivedFilter
   /** Unarchive an archived result row in place. */
   onUnarchive: (id: SessionNode['id']) => void
+  /** Clear a completion reminder the user confirmed. */
+  onAcknowledge: (id: SessionNode['id']) => void
   query: string
   remote: RemoteSearchState
   resultLimit: number
@@ -855,6 +863,7 @@ function SearchResults({
               currentId={currentId}
               onOpen={open}
               onUnarchive={onUnarchive}
+              onAcknowledge={onAcknowledge}
               t={t}
             />
           ))}
@@ -906,6 +915,7 @@ export function WorkspaceBrowser({
   open,
   requestSessionRename,
   notifyArchivedNotOpenable,
+  acknowledgeCompletion,
   renameWorkspace,
   deleteWorkspace,
   insertWorkspaceBefore,
@@ -1408,6 +1418,7 @@ export function WorkspaceBrowser({
               useSessionStatus={useSessionStatus}
               open={openSearchResult}
               onUnarchive={onSessionUnarchive}
+              onAcknowledge={acknowledgeCompletion}
               workspaces={workspaces}
               archivedSessionIds={archivedSessionIds}
               archivedFilter={archivedFilter}
@@ -1430,6 +1441,7 @@ export function WorkspaceBrowser({
                 useSessionStatus={useSessionStatus}
                 open={guardedOpen}
                 onSessionRenameRequest={requestSessionRename}
+                onAcknowledge={acknowledgeCompletion}
                 renderSlot={renderSlot}
                 setSessionOrder={saveSessionOrder}
                 revealSessionId={revealSessionId}
@@ -1444,6 +1456,7 @@ export function WorkspaceBrowser({
                 shortcuts={shortcuts}
                 useSessionStatus={useSessionStatus}
                 onSessionRenameRequest={requestSessionRename}
+                onAcknowledge={acknowledgeCompletion}
                 renderSlot={renderSlot}
                 workspaces={orderedWorkspaces}
                 ungroupedSessionIds={orderedUngroupedSessionIds}

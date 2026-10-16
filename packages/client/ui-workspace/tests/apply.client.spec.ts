@@ -67,6 +67,9 @@ async function bench() {
     catalog: createSnapshotStore([]),
   })
   ctx.provide('uiConversation', {})
+  // The row acknowledgement control writes through the Session status service.
+  const acknowledgeCompletion = vi.fn()
+  ctx.provide('uiSession', { acknowledgeCompletion })
   await ctx.plugin(SlotRegistry).await()
   const accessSource = vi.fn((_kind: string, _id: string, _action: string): HostObservable<boolean> => ALLOWED)
   ctx.provide('remoteAccess', { source: accessSource })
@@ -164,6 +167,7 @@ async function bench() {
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, rename, commands, accessSource,
     retain, using, selectPanel, search, renameSession, binding, fork, pickDirectory, pinSession, unpinSession,
+    acknowledgeCompletion,
     workspacesSubscribe, initializeDefault, history, scope, sessionOf,
     setWorkspaces: (snapshot: WorkspaceSnapshot): void => { workspaceSnapshot = snapshot },
     setSessions: (snapshot: SessionListState): void => { sessionSnapshot = snapshot },
@@ -220,6 +224,7 @@ describe('ui-workspace apply', () => {
   it('declares the services it drives', () => {
     expect(inject).toEqual([
       'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts', 'remoteAccess',
+      'uiSession',
     ])
   })
 

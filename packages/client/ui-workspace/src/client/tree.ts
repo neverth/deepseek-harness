@@ -11,6 +11,7 @@ import type {
   SessionStatusSnapshot,
 } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type {} from '@deepseek-ai/dsh-session-turn-outline/client'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 
@@ -54,6 +55,10 @@ export interface SessionNode {
   runningSubagentCount: number
   /** Finished running while not selected and not yet opened (the green "done" reminder dot). */
   completed: boolean
+  /** The main view admitted the completion reminder: it clears only on an explicit acknowledgement. */
+  awaitingAck: boolean
+  /** Latest user prompt as a projected preview; absent when the Session has none. */
+  preview?: string
   /** In the registry-global pin set: leads its section, reorderable only among pinned rows. */
   pinned: boolean
   /** In the registry-global archive set: shown grayed in place and not openable. */
@@ -95,6 +100,8 @@ export interface SearchResultNode {
   runningSubagentCount: number
   /** Finished running while not selected and not yet opened (the green "done" reminder dot). */
   completed: boolean
+  /** The main view admitted the completion reminder: it clears only on an explicit acknowledgement. */
+  awaitingAck: boolean
   /** In the registry-global archive set: shown grayed and not openable. */
   archived: boolean
   snippet?: string
@@ -387,6 +394,23 @@ function visiblePendingKind(kind: string | undefined): SessionPendingInteraction
   }
 }
 
+/**
+ * Latest projected user prompt of one Session, or undefined when none is
+ * projected yet.
+ *
+ * The list snapshot already carries every registered projection for sessions
+ * that were never opened, so a row reads them without a per-session refresh.
+ */
+function latestPrompt(list: SessionListState, sessionId: SessionId): string | undefined {
+  const outline = list.projectionsBySession[sessionId]?.values.turnOutline
+  if (outline === undefined) return undefined
+  for (let index = outline.length - 1; index >= 0; index -= 1) {
+    const prompt = outline[index]?.prompt.trim() ?? ''
+    if (prompt !== '') return prompt
+  }
+  return undefined
+}
+
 function runningChildCount(list: SessionListState, parentId: SessionId, statuses: SessionStatuses): number {
   return list.projectionsBySession[parentId]?.values.subagentCatalog?.reduce(
     (count, child) => count + ((statuses.get(child.id)?.running ?? list.byId[child.id]?.running) === true ? 1 : 0),
@@ -403,6 +427,7 @@ function sessionNode(
 ): SessionNode {
   const status = statuses.get(s.id)
   const pendingInteraction = visiblePendingKind(status?.pendingInteraction?.kind)
+  const preview = latestPrompt(list, s.id)
   return {
     id: s.id,
     title: sessionTitle(s),
@@ -410,9 +435,11 @@ function sessionNode(
     running: status?.running ?? s.running,
     runningSubagentCount: runningChildCount(list, s.id, statuses),
     completed: status?.completionUnread === true,
+    awaitingAck: status?.completionPendingAck === true,
     pinned: !archived.has(s.id) && pinned.has(s.id),
     archived: archived.has(s.id),
     updatedAt: s.updatedAt,
+    ...(preview === undefined ? {} : { preview }),
     ...(pendingInteraction === undefined ? {} : { pendingInteraction }),
   }
 }
@@ -612,6 +639,7 @@ export function deriveSearchResults(
           ? {}
           : { pendingInteraction }),
         completed: status?.completionUnread === true,
+        awaitingAck: status?.completionPendingAck === true,
         archived: archived.has(summary.id),
         ...match === undefined ? {} : { snippet: match.snippet },
       }

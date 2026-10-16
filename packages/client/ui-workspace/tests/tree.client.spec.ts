@@ -52,7 +52,9 @@ const noAttention: SessionStatusSnapshot = new Map()
 const status = (
   pendingInteraction: SessionPendingInteraction | undefined,
   overrides: Partial<SessionStatus> = {},
-): SessionStatus => ({ running: undefined, pendingInteraction, completionUnread: false, ...overrides })
+): SessionStatus => ({
+  running: undefined, pendingInteraction, completionUnread: false, completionPendingAck: false, ...overrides,
+})
 const archived = (...ids: string[]): readonly SessionId[] => ids.map(sid)
 const rowState = (options: {
   pinned?: readonly string[]
@@ -666,6 +668,7 @@ describe('deriveSearchResults', () => {
           runningSubagentCount: 0,
           pendingInteraction: 'plan-review',
           completed: false,
+          awaitingAck: false,
           archived: false,
           snippet: 'title session body excerpt',
         },
@@ -676,6 +679,7 @@ describe('deriveSearchResults', () => {
           running: false,
           runningSubagentCount: 0,
           completed: false,
+          awaitingAck: false,
           archived: false,
         },
         {
@@ -685,6 +689,7 @@ describe('deriveSearchResults', () => {
           running: false,
           runningSubagentCount: 0,
           completed: false,
+          awaitingAck: false,
           archived: false,
           snippet: 'body needle excerpt',
         },
