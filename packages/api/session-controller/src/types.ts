@@ -326,6 +326,21 @@ export interface SessionRenameValue {
   readonly seq: number
 }
 
+/** Session title refresh request. */
+export interface SessionTitleRefreshRequest {
+  readonly sessionId: SessionId
+}
+
+/**
+ * Outcome of one explicit title refresh. Both fields are absent when the
+ * Session holds no eligible human text, or when the provider kept the title it
+ * was anchored to; the accepted title reaches clients through the projection.
+ */
+export interface SessionTitleRefreshValue {
+  readonly title?: string
+  readonly seq?: number
+}
+
 /** Session fork request. */
 export interface SessionForkRequest {
   readonly sessionId: SessionId

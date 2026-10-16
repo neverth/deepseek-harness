@@ -58,6 +58,7 @@ import { GroupPickerDialog, MoveToGroupMenuItem } from './session-actions/MoveTo
 import { PinSessionMenuItem, PinSessionRowButton } from './session-actions/PinSession.tsx'
 import { RenameSessionMenuItem, SessionRenameDialog } from './session-actions/RenameSession.tsx'
 import { ShareSessionMenuItem } from './session-actions/ShareSession.tsx'
+import { RefreshTitle, type RefreshTitleInjected } from './RefreshTitle.tsx'
 import { RowActionToast } from './session-actions/RowActionToast.tsx'
 import { registerToasts } from './toast/register.ts'
 import { SessionIdMenuItem } from './session-actions/SessionId.tsx'
@@ -329,6 +330,35 @@ export function apply(ctx: Context): void {
     createWorkspace: input => workspaces.create(input),
     hooks: { directoryFlow: pickerFlowSource },
   })
+  // The title is a Host projection reached through the Session object layer,
+  // so the composer control asks through this closure and never sees ctx.
+  // A refusal is reported here: the control's own state can only say
+  // "unchanged", which would read as a dead click.
+  const refreshTitleInjected = (): RefreshTitleInjected => ({
+    refreshTitle: async (sessionId) => {
+      try {
+        const result = await sessions.using(
+          sessionId,
+          { source: 'workspaceOperation' },
+          reference => reference.binding.session.refreshTitle(),
+        )
+        return result.ok && result.value.title !== undefined
+      } catch (reason: unknown) {
+        console.warn('session title refresh rejected:', reason)
+        notify({ kind: 'titleRefreshFailed' })
+        return false
+      }
+    },
+  })
+  // The composer's leading row puts this trigger right after the permission
+  // chip, so a title refresh reads as a composer control rather than a row action.
+  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
+    name: 'conversation.input.left',
+    id: 'refresh-title',
+    order: 100,
+    locale: NS,
+    inject: refreshTitleInjected,
+  }, RefreshTitle))
   // The Session's directory is a header fact, so its chip joins the
   // conversation header's action band ahead of the Agent Teams trigger.
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({

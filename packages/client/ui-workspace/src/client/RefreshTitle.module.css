@@ -1,0 +1,35 @@
+/* Matches the chips it sits beside in the composer's leading row (the
+   permission and plan triggers): the same 28px row, 13px medium secondary
+   text, and hover wash, so it reads as one more composer control. */
+.regenerate {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background-color: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.regenerate:hover:not(:disabled) {
+  background-color: var(--dsw-alias-interactive-bg-hover);
+}
+
+.regenerate:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The label is the feedback surface: a narrow composer must not grow a second
+   line, so the longest state clips instead of wrapping. */
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

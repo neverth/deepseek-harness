@@ -382,6 +382,22 @@ export class Session implements SessionFace {
   }
 
   /**
+   * Regenerate the title through the Host's registered provider. On success
+   * settle the 'title' projection cell exactly like rename; a provider that
+   * kept its anchored title answers an empty value and the projection stands.
+   * @returns the refreshed title and its event seq, or the business error.
+   */
+  async refreshTitle(): Promise<RemoteResult<{ title?: string; seq?: SessionSeq }>> {
+    const result = await this.remote.session.refreshTitle({ sessionId: this.sessionId })
+    if (!result.ok) return result
+    const accepted = result.value
+    if (accepted.title === undefined || accepted.seq === undefined) return { ok: true, value: {} }
+    const seq = SessionSeq(accepted.seq)
+    this.projections.apply('title', accepted.title, seq)
+    return { ok: true, value: { title: accepted.title, seq } }
+  }
+
+  /**
    * Execute one slash-command line against this session's agent — pure
    * admission semantics (the host executor durably logs the lifecycle;
    * outcomes render as flow nodes, never as a response echo).
