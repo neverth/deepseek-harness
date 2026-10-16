@@ -40,6 +40,16 @@ function bench(feedbackAvailable = false) {
   return { controller, request, openFeedback, feedback, view }
 }
 
+/** Install the async browser clipboard and restore its prior host shape. */
+function installClipboard(writeText: (text: string) => Promise<void>): () => void {
+  const prior = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+  return () => {
+    if (prior === undefined) Reflect.deleteProperty(navigator, 'clipboard')
+    else Object.defineProperty(navigator, 'clipboard', prior)
+  }
+}
+
 afterEach(cleanup)
 
 describe('Session export Header action', () => {
@@ -53,22 +63,40 @@ describe('Session export Header action', () => {
     expect(b.view.queryByRole('menu')).toBeNull()
   })
 
-  it('shows no Header button when the feedback plugin is absent', () => {
+  it('keeps the more-actions menu without the feedback row when that plugin is absent', () => {
     const b = bench()
-    expect(b.view.queryByRole('button', { name: 'More actions' })).toBeNull()
+    fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
     expect(b.view.queryByRole('menuitem', { name: 'Download session log' })).toBeNull()
+    expect(b.view.queryByRole('menuitem', { name: 'Feedback' })).toBeNull()
+    expect(b.view.getByRole('menuitem', { name: 'Copy Session ID' })).toBeTruthy()
   })
 
-  it('updates the open menu when feedback becomes available and unloads', () => {
+  it('adds and drops the feedback row as that plugin loads and unloads', () => {
     const b = bench()
-    expect(b.view.queryByRole('button', { name: 'More actions' })).toBeNull()
+    fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
+    expect(b.view.queryByRole('menuitem', { name: 'Feedback' })).toBeNull()
 
     act(() => { b.feedback.set(true) })
-    fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
     expect(b.view.getByRole('menuitem', { name: 'Feedback' })).toBeTruthy()
     act(() => { b.feedback.set(false) })
-    expect(b.view.queryByRole('button', { name: 'More actions' })).toBeNull()
-    expect(b.view.queryByRole('menu')).toBeNull()
+    expect(b.view.queryByRole('menuitem', { name: 'Feedback' })).toBeNull()
+    expect(b.view.getByRole('menuitem', { name: 'Copy Session ID' })).toBeTruthy()
+  })
+
+  it('copies the Session ID and confirms it on the row without opening feedback', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    const restore = installClipboard(writeText)
+    try {
+      const b = bench(true)
+      fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
+      fireEvent.click(b.view.getByRole('menuitem', { name: 'Copy Session ID' }))
+      // The accepted write flips the row label; the menu stays open for it.
+      expect(await b.view.findByRole('menuitem', { name: 'Session ID copied' })).toBeTruthy()
+      expect(writeText).toHaveBeenCalledWith(SID)
+      expect(b.openFeedback).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
   })
 
   it('closes the menu on Escape without opening feedback', () => {
@@ -82,7 +110,9 @@ describe('Session export Header action', () => {
 
   it('hosts the result dialog without a Header download button', async () => {
     const b = bench()
-    expect(b.view.queryByRole('button')).toBeNull()
+    // The seat's only control is the more-actions trigger; `/export` owns downloading.
+    expect(b.view.getAllByRole('button').map(button => button.getAttribute('aria-label')))
+      .toEqual(['More actions'])
 
     const controller = new SessionLogDownloadController(
       () => Promise.resolve(new Response('zip')),
