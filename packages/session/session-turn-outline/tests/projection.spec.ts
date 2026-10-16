@@ -113,7 +113,7 @@ describe('turn outline projection unit', () => {
     endTurn(session, 1)
     const entry = outlineOf(ctx, session)[0]
     expect(entry?.prompt).toMatch(/^giant g+…$/)
-    expect(entry?.prompt).toHaveLength(50)
+    expect(entry?.prompt).toHaveLength(120)
     expect(entry?.response).toMatch(/^answer a+…$/)
     expect(entry?.response).toHaveLength(120)
   })
@@ -123,7 +123,7 @@ describe('turn outline projection unit', () => {
     session.append('turn/start', { turn: 1 })
     session.append('user/message', createUserMessage({
       content: [
-        { type: 'text', text: `  spaced\n\nprompt\t${'p'.repeat(80)}` },
+        { type: 'text', text: `  spaced\n\nprompt\t${'p'.repeat(200)}` },
         { type: 'text', text: 'never reached past the budget' },
       ],
       source: { kind: 'user' },
@@ -132,7 +132,7 @@ describe('turn outline projection unit', () => {
     endTurn(session, 1)
     const entry = outlineOf(ctx, session)[0]
     expect(entry?.prompt).toMatch(/^spaced prompt p+…$/)
-    expect(entry?.prompt).toHaveLength(50)
+    expect(entry?.prompt).toHaveLength(120)
     expect(entry?.response).toMatch(/^answer r+…$/)
     expect(entry?.response).toHaveLength(120)
   })
