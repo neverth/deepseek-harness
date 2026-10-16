@@ -62,6 +62,12 @@ const SYSTEM = [
   'If the messages give little to name, still return a short best-effort title, such as Greeting, instead of explaining.',
 ].join('\n')
 
+/** Stability instruction added once a provider title becomes the anchor. */
+const ANCHOR_RULES = [
+  'An existing title is supplied as currentTitle. Keep it exactly unchanged while it still describes the session.',
+  'Change it only when the messages materially change or expand the session topic.',
+].join('\n')
+
 interface Harness {
   ctx: Context
   adapter: RecordingAdapter
@@ -102,7 +108,7 @@ function textOf(options: GenerateOptions | undefined): string {
 }
 
 describe('first-prompt LLM title provider', () => {
-  it('registers itself and always selects only the first eligible human message, including refresh', async () => {
+  it('titles from the first message, then re-titles from the recent window on refresh', async () => {
     const { ctx, adapter } = await harness()
     const session = ctx.sessions.create(SessionId('first-plugin'))
     session.append('turn/start', { turn: 1 })
@@ -112,24 +118,31 @@ describe('first-prompt LLM title provider', () => {
       header: { config: { provider: 'main', model: 'main-model' } }, reason: 'initial',
     })
     await settle()
-    appendHumanPrompt(session, 'second input must be ignored')
+    const second = appendHumanPrompt(session, 'second input')
+    const third = appendHumanPrompt(session, 'third input')
     await settle()
 
     await ctx.sessionTitle.refresh(session)
 
     expect(adapter.requests).toHaveLength(2)
-    for (const options of adapter.requests) {
-      const text = textOf(options)
-      expect(text).toBe(`Generate the session title from this JSON array of human messages:\n${JSON.stringify([
+    const [initial, refresh] = adapter.requests as [GenerateOptions, GenerateOptions]
+    expect(textOf(initial)).toBe(`Generate the session title from this JSON array of human messages:\n${JSON.stringify([
+      { seq: first.seq, text: 'first input' },
+    ])}`)
+    expect(initial.system).toBe(SYSTEM)
+    expect(initial.system).not.toContain('currentTitle')
+    expect(textOf(refresh)).toBe(`Update the session title from this JSON object:\n${JSON.stringify({
+      currentTitle: 'First-message model title',
+      messages: [
         { seq: first.seq, text: 'first input' },
-      ])}`)
-      expect(text).not.toContain('currentTitle')
-      expect(options.system).toBe(SYSTEM)
-      expect(options.system).not.toContain('return it exactly unchanged')
-    }
+        { seq: second.seq, text: 'second input' },
+        { seq: third.seq, text: 'third input' },
+      ],
+    })}`)
+    expect(refresh.system).toBe(`${SYSTEM}\n${ANCHOR_RULES}`)
     expect(ctx.sessionTitle.get(session)).toMatchObject({
       title: 'First-message model title',
-      messageSeqs: [first.seq],
+      messageSeqs: [first.seq, second.seq, third.seq],
       source: { kind: 'provider', provider: providerPlugin.name, model: { provider: 'title-route', model: 'title-model' } },
     })
   })

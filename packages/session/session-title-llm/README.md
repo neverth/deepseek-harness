@@ -31,7 +31,7 @@ As a deployment, configure this policy through the [first-prompt](../session-tit
 
 A provider plugin registers directly on `ctx.sessionTitle` and, inside its `generate(request)`, passes `{ system, input, messageSeqs, selectReasoningEffort }` to `executeSessionTitleLlm`. The provider owns the system instruction, input framing, its reasoning selection, and output interpretation; the function owns route preparation, bounds, cancellation, request logging, and stream assembly. A second registration on the service throws.
 
-Every request carries `currentTitle`, the latest accepted title snapshot the service captured for the call, including an accepted fallback. A provider decides whether to use it: the all-prompts provider anchors only a provider-sourced title, including one inherited from a different provider, and treats fallback, user, and absent titles as initial generation. The first-prompt provider ignores `currentTitle`.
+Every request carries `currentTitle`, the latest accepted title snapshot the service captured for the call, including an accepted fallback. A provider decides whether to use it: the all-prompts provider anchors only a provider-sourced title, including one inherited from a different provider, and treats fallback, user, and absent titles as initial generation. The first-prompt provider anchors a provider-sourced title on its periodic refreshes on the same terms.
 
 ### Route and failure contract
 
@@ -85,7 +85,7 @@ Read these pages when the generation policy is not enough. They move from the se
 
 - [Session title service](../session-title/README.md) — the title service, fallback behavior, and provider registration contract.
 - [Session title subsystem](../../../docs/subsystems/session-title.md) — durable title state and the auxiliary request record.
-- [First-message title provider](../session-title-first-prompt-llm/README.md) — titles from the first eligible human message.
+- [First-message title provider](../session-title-first-prompt-llm/README.md) — titles from the first eligible human message, refreshed periodically from the recent conversation.
 - [All-messages title provider](../../experimental/session-title-all-prompts-llm/README.md) — titles from every eligible human message.
 - [Session package map](../README.md) — adjacent persistence, projection, title, and telemetry packages.
 

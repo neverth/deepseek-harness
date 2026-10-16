@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-session-title-first-prompt-llm` summarizes the first eligible human message through `ctx.llm` as an optional `ctx.sessionTitle` provider. It registers the `first-prompt` cadence, runs automatically only when a fresh non-fork session first creates its fallback, and attributes the result to that message's exact seq. An automatic failure retains the fallback and is retried only through `ctx.sessionTitle.refresh()`. The plugin owns its system instruction, JSON framing, and output parsing; it shares only the [execution module](../session-title-llm/README.md) from `dsh-session-title-llm` with the all-prompts provider. Automatic behavior and configuration come first; the implementation is a small provider strategy over that executor.
+`dsh-session-title-first-prompt-llm` titles a root session through `ctx.llm` as an optional `ctx.sessionTitle` provider. It registers the `first-prompt` cadence: the first eligible human message titles the session, and every third message re-titles it from the recent conversation, attributing the result to the seqs it read. An automatic failure retains the fallback; the next due refresh or an explicit `ctx.sessionTitle.refresh()` retries it. The plugin owns its system instruction, JSON framing, and output parsing; it shares only the [execution module](../session-title-llm/README.md) from `dsh-session-title-llm` with the all-prompts provider. Automatic behavior and configuration come first; the implementation is a small provider strategy over that executor.
 
 ## Table of Contents
 
@@ -25,11 +25,11 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this plugin beside the title service when a session should be titled from its first eligible human message. It requires its own `targetWords` and `targetCjkCharacters` plus the shared [execution controls](../session-title-llm/README.md#configuration), all with no defaults.
+Mount this plugin beside the title service when a session should be titled from its first eligible human message and re-titled as the conversation moves on. It requires its own `targetWords` and `targetCjkCharacters` plus the shared [execution controls](../session-title-llm/README.md#configuration), all with no defaults.
 
 ### When titles are generated
 
-Automatic generation runs only for a fresh session with no parent and no prior title: after its first eligible human message, the fallback is created and one auxiliary request summarizes that message. Later prompts, explicit user renames, and inherited fork history do not trigger another automatic call. An automatic failure keeps the fallback; `ctx.sessionTitle.refresh()` is the explicit retry. Forks keep their inherited title and never run this provider automatically, even when their seeded first message came from the parent.
+Automatic generation runs only for a session with no parent: after its first eligible human message the fallback is created and one auxiliary request titles the session from that message, and every third later eligible message re-titles it from the most recent messages. Explicit user renames and inherited fork history never trigger a call. An automatic failure keeps the current title until the next due refresh or an explicit `ctx.sessionTitle.refresh()`. Forks keep their inherited title and never run this provider automatically, even when their seeded first message came from the parent.
 
 ### Configuration
 
@@ -37,7 +37,7 @@ The plugin requires `targetWords` and `targetCjkCharacters` plus the shared [exe
 
 ### Failures and recovery
 
-A generation that fails — a missing route before any main request, input over `maxInputBytes`, timeout, cancellation, or invalid model output — warns and keeps the current title; only an explicit `refresh()` retries. Automatic work adds no tokens and no latency to the main agent request.
+A generation that fails — a missing route before any main request, input over `maxInputBytes`, timeout, cancellation, or invalid model output — warns and keeps the current title; the next due refresh or an explicit `refresh()` retries. Automatic work adds no tokens and no latency to the main agent request.
 
 -----
 
@@ -51,17 +51,17 @@ This section explains the plugin's shape; the observable behavior is fully cover
 
 ### Design concept
 
-A small provider strategy: it builds the first-message system instruction and JSON input, parses the assembled response into a title, and delegates only route, bounds, cancellation, logging, and assembly to the [shared execution module](../session-title-llm/README.md).
+A small provider strategy: it builds the system instruction and JSON input for the messages one call covers — the first message alone on initial generation, otherwise a trailing window plus the current provider title — parses the assembled response into a title, and delegates only route, bounds, cancellation, logging, and assembly to the [shared execution module](../session-title-llm/README.md).
 
 ### Source map
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: config schema, first-message prompt and framing, output parsing, and direct provider registration |
+| [`src/index.ts`](src/index.ts) | Plugin entry: config schema, prompt and framing, output parsing, and direct provider registration |
 
 ### Scheduling
 
-The title service schedules automatic work: for the `first-prompt` cadence it starts a revision only when the session has no parent, holds exactly one eligible message, and has no title yet; the provider call begins after the exact main-request route is logged, and a newer revision supersedes older work.
+The title service schedules automatic work: for the `first-prompt` cadence it starts a revision on a root session's first eligible message and on every third later one; the provider call begins after the exact main-request route is logged, and a newer revision supersedes older work.
 
 </details>
 
@@ -82,15 +82,15 @@ Read these pages when the provider contract is not enough. They move from the sh
 <a id="model-experience"></a>
 ## Model Experience
 
-### First-message title request
+### Automatic title requests
 
 #### What the model sees
 
-The title model receives this provider's title instruction and a JSON array containing only the first eligible human message; it never receives a `currentTitle`. Later prompts and inherited fork history do not trigger another automatic call.
+The title model receives this provider's title instruction and a JSON array of the human messages the call covers: the first eligible message alone on initial generation, otherwise the most recent three. A refresh also receives the current provider title as `currentTitle` in a JSON object, with a stability rule to keep it while it still describes the session. Inherited fork history does not trigger another automatic call.
 
 #### Token effect
 
-At most one automatic auxiliary request is made for a fresh session, bounded by `maxInputBytes` and `maxOutputTokens`; explicit refreshes may make additional calls. It selects the route's least supported reasoning effort, or leaves effort unspecified when the route exposes none. The main agent request gains zero tokens.
+One automatic auxiliary request titles a root session, then one per three later eligible messages, each bounded by `maxInputBytes` and `maxOutputTokens`; explicit refreshes may make additional calls. It selects the route's least supported reasoning effort, or leaves effort unspecified when the route exposes none. The main agent request gains zero tokens.
 
 #### KV Cache effect
 
@@ -103,7 +103,7 @@ No main-request invalidation. The auxiliary request uses the configured or logge
 
 These limits define when this provider stops representing the session. They are current package constraints.
 
-- **First message may go stale** — the first message alone may cease to represent a long-running session; use the all-messages provider when later prompts should retitle it.
+- **Refresh interval is fixed** — a session is re-titled only every third later eligible message, so a topic that changes earlier keeps its previous title until the interval passes; use the all-messages provider when every prompt should retitle it.
 - **Forks never retitle automatically** — a fork keeps its inherited title and never runs this provider automatically, even when its seeded first message came from the parent.
 
 <a id="dev-note"></a>

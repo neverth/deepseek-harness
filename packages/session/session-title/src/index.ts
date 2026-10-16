@@ -218,6 +218,14 @@ function titleSnapshotFromState(state: TitleProjection): SessionTitleSnapshot {
 
 const EMPTY_TITLE_INPUT: TitleInputState = { first: null, count: 0, lastSeq: null }
 
+/**
+ * Eligible human messages between automatic provider refreshes of a root
+ * session. The first message titles the session immediately; every following
+ * message at this interval re-titles it from the recent conversation, so a
+ * session whose topic moves on is renamed without a provider call per prompt.
+ */
+const REFRESH_EVERY_USER_MESSAGES = 3
+
 const sessionTitleUserMessageSchema: ZodType<SessionTitleUserMessage> = zod.object({
   seq: zod.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).transform(SessionSeq),
   text: zod.string(),
@@ -511,8 +519,13 @@ export class SessionTitleService extends Service {
     const registration = this.registration
     if (registration !== undefined && !registration.closing) {
       const count = this.titleInputOf(session).count
+      const rootSession = session.header.parentSession === undefined
+      const refreshDue = rootSession
+        && count > 1
+        && (count - 1) % REFRESH_EVERY_USER_MESSAGES === 0
       const shouldSchedule = registration.provider.automatic === 'all-prompts'
-        || (session.header.parentSession === undefined && count === 1 && this.get(session) === undefined)
+        || (rootSession && count === 1 && this.get(session) === undefined)
+        || refreshDue
       if (shouldSchedule) {
         const state = this.stateFor(session)
         const revision = this.supersede(state, 'newer user message superseded title generation')
