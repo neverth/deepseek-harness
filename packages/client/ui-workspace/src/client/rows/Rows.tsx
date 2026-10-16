@@ -9,15 +9,15 @@
  * `sidebar.workspaces.session.row.action` list. Session and Workspace
  * hover cards are suppressed while their menu is open.
  */
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent, RefObject } from 'react'
 import clsx from 'clsx'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  HoverCard, IconArchiveOutlineRegular,
-  IconFolderCloseRegular, IconFolderOpenRegular,
-  IconNewChatOutlineRegular, IconPinFillRegular,
-  IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, relativeTime, StateDot, Tooltip, useRowDragPreview,
+  HoverCard, IconArchiveOutlineRegular, IconEditOutlineRegular,
+  IconEllipsisOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular,
+  IconNewChatOutlineRegular, IconPinFillRegular, IconTrashOutlineRegular,
+  IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, Menu, relativeTime, StateDot, Tooltip, useRowDragPreview,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -223,7 +223,10 @@ type ProjectRowItemProps = {
   newShortcut?: ShortcutCatalogEntry | undefined
   containsCurrentDescendant?: boolean
   onToggle: () => void
-  onCreate: () => void
+  /** Present only where a Session has a Workspace to open in. */
+  onCreate?: (() => void) | undefined
+  /** Rename/delete actions; present only for a hand-made group row. */
+  actions?: { rename: () => void; delete: () => void } | undefined
   /** Present only for real Workspace rows in the grouped view. */
   drag?: WorkspaceRowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
@@ -238,7 +241,7 @@ interface ProjectRowAccess {
 }
 
 /**
- * Project (workspace) header row: folder + title;
+ * Project (workspace or hand-made) group header row: glyph + title;
  * hover reveals the chevron and create button, and dwelling on a real
  * Workspace shows its hover card (the ungrouped bucket has none).
  * `containsCurrent` arrives on the node (derivation fact, no renderer scan).
@@ -247,13 +250,16 @@ interface ProjectRowAccess {
  * @param props.group - derived group node.
  * @param props.containsCurrentDescendant - highlight an ancestor even when its subtree is collapsed.
  * @param props.onToggle - expand/collapse the group.
- * @param props.onCreate - start a frontend Session inside this Workspace.
+ * @param props.onCreate - start a frontend Session inside this Workspace; absent for hand-made sections.
  * @param props.drag - optional workspace-row drag wiring.
  * @param props.home - host account home for POSIX hover-path abbreviation.
  * @param props.t - the browser root's locale seat.
  * @returns the row element.
  */
 export function ProjectRowItem(props: ProjectRowItemProps) {
+  if (props.group.customGroupId !== undefined) {
+    return <ProjectRow {...props} access={{ create: false, rename: true, delete: true, reorder: true }} />
+  }
   const workspaceId = props.group.workspaceId
   return workspaceId === undefined
     ? <UngroupedProjectRow {...props} />
@@ -283,13 +289,25 @@ function ProjectRow({
   const { getTriggerProps } = useContextMenu()
   const drag = access.reorder ? offeredDrag : undefined
   const row = group
-  // The ungrouped bucket has no workspace title: its label is dictionary copy.
-  const label = row.workspaceId === undefined ? t('group.ungrouped') : row.label
+  const custom = row.customGroupId !== undefined
+  // The ungrouped bucket has no title of its own: its label is dictionary copy.
+  const label = row.workspaceId === undefined && !custom ? t('group.ungrouped') : row.label
   const active = containsCurrentDescendant || (group.expanded && group.containsCurrent)
   const menuOpen = useContextMenuTarget(target => target?.kind === 'workspace' && target.value.workspaceId === row.workspaceId)
   const dragPreview = useRowDragPreview(css.dragPreview as string, DRAG_PREVIEW_PROPERTIES)
   const workspaceMenuTarget = row.workspaceId !== undefined && row.cwd !== undefined
     ? { workspaceId: row.workspaceId, path: row.cwd } : undefined
+  const [customMenuOpen, setCustomMenuOpen] = useState(false)
+  const workspaceMenuItems = [
+    ...access.rename ? [{ id: 'rename', label: t('rename'), icon: <IconEditOutlineRegular /> }] : [],
+    ...access.delete ? [{
+      id: 'delete',
+      label: t(custom ? 'group.delete' : 'delete.workspace'),
+      icon: <IconTrashOutlineRegular />,
+      // Dropping a hand-made group loses no Session, so it takes no danger styling.
+      ...(custom ? {} : { danger: true as const }),
+    }] : [],
+  ]
   const ownRow = (
     <div
       className={clsx(css.projectRow, menuOpen && css.menuOpen)}
@@ -326,7 +344,35 @@ function ProjectRow({
             className: css.iconButton,
           })
         )}
-        {access.create && (
+        {workspaceMenuTarget === undefined && actions !== undefined && workspaceMenuItems.length > 0 && (
+          <Menu
+            open={customMenuOpen}
+            onClose={() => { setCustomMenuOpen(false) }}
+            items={workspaceMenuItems}
+            onSelect={(id) => {
+              setCustomMenuOpen(false)
+              // Unknown ids leave before the dispatch: a future menu row must
+              // not inherit the destructive branch as an else fallback.
+              /* v8 ignore next -- Menu can emit only the rename and delete rows supplied above. */
+              if (id !== 'rename' && id !== 'delete') return
+              if (id === 'rename') actions.rename()
+              else actions.delete()
+            }}
+            portal
+            closeOnPointerLeave
+            anchor={(
+              <button
+                type="button"
+                className={css.iconButton}
+                aria-label={t('actions.group.aria', { name: label })}
+                onClick={(e) => { e.stopPropagation(); setCustomMenuOpen(v => !v) }}
+              >
+                <IconEllipsisOutlineRegular />
+              </button>
+            )}
+          />
+        )}
+        {access.create && onCreate !== undefined && (
           <Tooltip label={t('actions.newSession')} shortcutKeys={newShortcut?.keys} side="bottom" align="end" delayMs={500} portal>
             <button
               type="button"

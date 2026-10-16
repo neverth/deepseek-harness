@@ -20,6 +20,8 @@ import type {
   WorkspaceValue,
   WorkspaceId,
   WorkspaceView,
+  WorkspaceViewDocument,
+  WorkspaceViewSnapshot,
 } from '../types.ts'
 
 /** Complete generated `ctx.remote.workspace` namespace. */
@@ -255,6 +257,15 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
       this.installPinned(result.value.pinnedSessionIds)
     }
     return result
+  }
+
+  /**
+   * Push one snapshot of the browser's sidebar view document.
+   * @param document - the complete current document.
+   * @returns generated Remote result carrying the stored snapshot, absent when it repeated.
+   */
+  saveViewSnapshot(document: WorkspaceViewDocument): Promise<RemoteResult<WorkspaceViewSnapshot | undefined>> {
+    return this.remote.saveViewSnapshot({ document })
   }
 
   /**
