@@ -23,13 +23,15 @@ import type { ArchiveToastEntryProps } from '../src/client/contract/toast.ts'
 import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type {
-  MenuOpenState, RowToast, RowToastState, SessionArchiveConfirmInjected, SessionArchiveConfirmRequest,
+  MenuOpenState, MoveToGroupRequest, RowToast, RowToastState, SessionArchiveConfirmInjected,
+  SessionArchiveConfirmRequest,
   SessionRenameDialogInjected, SessionRenameTarget,
 } from '../src/client/contract/slots.ts'
 import {
   ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog,
 } from '../src/client/session-actions/ArchiveSession.tsx'
 import { ForkSessionMenuItem } from '../src/client/session-actions/ForkSession.tsx'
+import { MoveToGroupMenuItem, GroupPickerDialog } from '../src/client/session-actions/MoveToGroupSession.tsx'
 import { PinSessionMenuItem, PinSessionRowButton } from '../src/client/session-actions/PinSession.tsx'
 import { RenameSessionMenuItem, SessionRenameDialog } from '../src/client/session-actions/RenameSession.tsx'
 import { RowActionToast } from '../src/client/session-actions/RowActionToast.tsx'
@@ -124,6 +126,77 @@ describe('Session ID action', () => {
     expect(setMenuOpen).toHaveBeenCalledWith(false)
     expect(copySessionId).toHaveBeenCalledExactlyOnceWith(sessionId)
     expect(callOrder(setMenuOpen)).toBeLessThan(callOrder(copySessionId))
+  })
+})
+
+describe('move-to-group action', () => {
+  /** The move share over fixed groups: the bound list hook plus the request hop. */
+  const moveShare = (sessionIds: readonly string[] = []) => ({
+    useCustomGroups: hook([{ id: 'custom:1', name: '运维排查', sessionIds }]),
+    requestMoveToGroup: vi.fn(),
+  })
+  /** The picker share: one request on display and the membership write. */
+  const pickerShare = (request: MoveToGroupRequest | null, sessionIds: readonly string[] = []) => ({
+    useMoveRequest: hook(request),
+    useCustomGroups: hook([{ id: 'custom:1', name: '运维排查', sessionIds }]),
+    settleMoveToGroup: vi.fn(),
+    moveSessionToGroup: vi.fn(),
+  })
+
+  it('offers no row while no group exists to move into', () => {
+    const { state } = openMenu()
+    const move = { useCustomGroups: hook([]), requestMoveToGroup: vi.fn() }
+    const { container } = render(<MoveToGroupMenuItem {...menuRow(state)} {...move} />)
+    expect(container.querySelector('[role="menuitem"]')).toBeNull()
+  })
+
+  it('menu row closes the menu, then asks for the picker', () => {
+    const { state, setMenuOpen } = openMenu()
+    const move = moveShare()
+    render(<MoveToGroupMenuItem {...menuRow(state)} {...move} />)
+    fireEvent.click(screen.getByRole('menuitem', { name: '移动到分组' }))
+    expect(move.requestMoveToGroup).toHaveBeenCalledExactlyOnceWith(ROW.sessionId, ROW.displayTitle)
+    expect(setMenuOpen).toHaveBeenCalledWith(false)
+    expect(callOrder(setMenuOpen)).toBeLessThan(callOrder(move.requestMoveToGroup))
+  })
+
+  it('renders nothing while no move is requested', () => {
+    const picker = pickerShare(null)
+    const { container } = render(<GroupPickerDialog {...overlay} {...picker} />)
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('marks the current group and moves the Session into the picked one', () => {
+    const picker = pickerShare({ sessionId: ROW.sessionId, displayTitle: ROW.displayTitle }, ['one'])
+    render(<GroupPickerDialog {...overlay} {...picker} />)
+    const current = screen.getByRole('option', { name: '运维排查' })
+    expect(current.getAttribute('aria-selected')).toBe('true')
+    // The Session already sits in the only group, so removal is the alternative.
+    fireEvent.click(screen.getByRole('option', { name: '移出分组' }))
+    expect(picker.moveSessionToGroup).toHaveBeenCalledExactlyOnceWith(ROW.sessionId, undefined)
+    expect(picker.settleMoveToGroup).toHaveBeenCalledOnce()
+  })
+
+  it('moves into a group that does not hold the Session yet', () => {
+    const picker = pickerShare({ sessionId: ROW.sessionId, displayTitle: ROW.displayTitle })
+    render(<GroupPickerDialog {...overlay} {...picker} />)
+    expect(screen.getByRole('option', { name: '运维排查' }).getAttribute('aria-selected')).toBe('false')
+    // Absent from every group: nothing to remove it from.
+    expect(screen.queryByRole('option', { name: '移出分组' })).toBeNull()
+    fireEvent.click(screen.getByRole('option', { name: '运维排查' }))
+    expect(picker.moveSessionToGroup).toHaveBeenCalledExactlyOnceWith(ROW.sessionId, 'custom:1')
+    expect(picker.settleMoveToGroup).toHaveBeenCalledOnce()
+  })
+
+  it('names the empty state when no group exists', () => {
+    const picker = {
+      useMoveRequest: hook({ sessionId: ROW.sessionId, displayTitle: ROW.displayTitle }),
+      useCustomGroups: hook([]),
+      settleMoveToGroup: vi.fn(),
+      moveSessionToGroup: vi.fn(),
+    }
+    render(<GroupPickerDialog {...overlay} {...picker} />)
+    expect(screen.getByText('还没有分组。先在侧栏点“新建分组”，再回到这里移动会话。')).toBeTruthy()
   })
 })
 

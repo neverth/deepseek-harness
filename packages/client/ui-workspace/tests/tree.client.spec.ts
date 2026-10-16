@@ -8,7 +8,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionProjectionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import {
   type ArchivedFilter,
-  deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningGroupKey, owningParentFolder,
+  deriveCustomGroups, deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningCustomGroupKey,
+  owningGroupKey, owningParentFolder,
   pinCurrentBlank, reconcileManualOrder, sessionMemberIds, visibleSessionIds, workspaceLabel, UNGROUPED_KEY,
 } from '../src/client/tree.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
@@ -889,4 +890,229 @@ it('leaves unnamed history titles empty for locale-owned row labels', () => {
   item.displayTitle = 'Default workspace'
   const sessions = list(item)
   expect(deriveFlat(sessions, [item.id], noRows, noAttention)[0]?.title).toBe('')
+})
+
+describe('owningCustomGroupKey', () => {
+  const groups = [
+    { id: 'custom:1', name: '运维', sessionIds: [sid('a')] },
+    { id: 'custom:2', name: '前端', sessionIds: [sid('b'), sid('c')] },
+  ]
+
+  it('returns the group naming the Session, or the Ungrouped key', () => {
+    expect(owningCustomGroupKey(groups, sid('c'))).toBe('custom:2')
+    expect(owningCustomGroupKey(groups, sid('loose'))).toBe(UNGROUPED_KEY)
+  })
+
+  it('leaves a Session named by no group in the bucket', () => {
+    expect(owningCustomGroupKey([], sid('a'))).toBe(UNGROUPED_KEY)
+  })
+})
+
+describe('deriveCustomGroups', () => {
+  const groups = [
+    { id: 'custom:1', name: '运维', sessionIds: [sid('a'), sid('b')] },
+    { id: 'custom:2', name: '前端', sessionIds: [sid('c')] },
+  ]
+
+  it('renders one section per group in caller order, then the bucket', () => {
+    const sessions = list(summary('a', 1), summary('b', 2), summary('c', 3), summary('loose', 4))
+    const sections = deriveCustomGroups(sessions, groups, noRows, noAttention, view(['custom:1', 'custom:2', UNGROUPED_KEY]))
+    expect(sections.map(section => [section.key, section.label, section.customGroupId])).toEqual([
+      ['custom:1', '运维', 'custom:1'],
+      ['custom:2', '前端', 'custom:2'],
+      [UNGROUPED_KEY, '', undefined],
+    ])
+    expect(sections[0]?.sessions.map(node => node.id)).toEqual([sid('a'), sid('b')])
+    // No Workspace backs a hand-made section, so the bucket's absent-facts rule applies to both.
+    expect(sections[0]?.workspaceId).toBeUndefined()
+    expect(sections[0]?.cwd).toBeUndefined()
+    expect(sections[0]?.createdAt).toBeUndefined()
+  })
+
+  it('keeps member order as saved and folds a section without dropping its rows', () => {
+    const sessions = list(summary('a', 1), summary('b', 2), summary('c', 3))
+    const folded = deriveCustomGroups(sessions, groups, noRows, noAttention, view(['custom:2'], []))
+    expect(folded[0]?.expanded).toBe(false)
+    expect(folded[0]?.sessions).toEqual([])
+    expect(folded[0]?.sessionCount).toBe(2)
+    expect(folded[1]?.sessions.map(node => node.id)).toEqual([sid('c')])
+  })
+
+  it('orders the bucket by its saved order and appends Sessions no group names', () => {
+    const sessions = list(summary('a', 1), summary('b', 2), summary('c', 3), summary('late', 4), summary('early', 5))
+    const sections = deriveCustomGroups(
+      sessions, groups, noRows, noAttention, view([UNGROUPED_KEY], ['early', 'late']),
+    )
+    expect(sections.at(-1)?.sessions.map(node => node.id)).toEqual([sid('early'), sid('late')])
+  })
+
+  it('accounts membership before visibility, so a hidden member stays out of the bucket', () => {
+    const sessions = list(summary('a', 1), summary('b', 2), summary('c', 3))
+    const sections = deriveCustomGroups(
+      sessions,
+      [{ id: 'custom:1', name: '运维', sessionIds: [sid('a'), sid('b')] }],
+      rowState({ archived: ['b'] }),
+      noAttention,
+      view(['custom:1', UNGROUPED_KEY]),
+    )
+    expect(sections[0]?.sessions.map(node => node.id)).toEqual([sid('a')])
+    expect(sections.at(-1)?.sessions.map(node => node.id)).toEqual([sid('c')])
+  })
+
+  it('shows no bucket while every Session is grouped', () => {
+    const sessions = list(summary('a', 1), summary('b', 2), summary('c', 3))
+    const sections = deriveCustomGroups(sessions, groups, noRows, noAttention, view(['custom:1', 'custom:2']))
+    expect(sections.map(section => section.key)).toEqual(['custom:1', 'custom:2'])
+  })
+
+  it('fronts a pinned member and marks the section holding the current Session', () => {
+    const sessions = withMain(list(summary('a', 1), summary('b', 2), summary('c', 3)), sid('c'))
+    const sections = deriveCustomGroups(
+      sessions, groups, rowState({ pinned: ['b'] }), noAttention, view(['custom:1', 'custom:2', UNGROUPED_KEY]),
+    )
+    expect(sections[0]?.sessions.map(node => node.id)).toEqual([sid('b'), sid('a')])
+    expect(sections[0]?.sessions[0]?.pinned).toBe(true)
+    // Every Session is grouped, so the bucket contributes no section.
+    expect(sections.map(section => section.containsCurrent)).toEqual([false, true])
+  })
+
+  it('marks the bucket as the current section for a Session no group names', () => {
+    const sessions = withMain(list(summary('a', 1), summary('loose', 2)), sid('loose'))
+    const sections = deriveCustomGroups(
+      sessions, groups, noRows, noAttention, view(['custom:1', 'custom:2', UNGROUPED_KEY]),
+    )
+    expect(sections.at(-1)?.containsCurrent).toBe(true)
+  })
+
+  it('ignores an id the Session list no longer carries', () => {
+    const sessions = list(summary('a', 1))
+    const sections = deriveCustomGroups(
+      sessions,
+      [{ id: 'custom:1', name: '运维', sessionIds: [sid('a'), sid('gone')] }],
+      noRows,
+      noAttention,
+      view(['custom:1']),
+    )
+    expect(sections[0]?.sessions.map(node => node.id)).toEqual([sid('a')])
+    expect(sections[0]?.sessionCount).toBe(1)
+  })
+
+  it('honours the archived-only filter without inventing an empty bucket', () => {
+    const sessions = list(summary('a', 1))
+    const sections = deriveCustomGroups(
+      sessions, groups, rowState({ archivedFilter: 'only' }), noAttention, view(['custom:1', 'custom:2', UNGROUPED_KEY]),
+    )
+    expect(sections).toEqual([])
+  })
+})
+
+describe('custom group store actions', () => {
+  const store = () => createWorkspaceViewStore().create()
+
+  it('creates a group with a namespaced id, an empty membership, and an open section', () => {
+    const s = store()
+    s.actions.createCustomGroup('运维排查')
+    s.actions.createCustomGroup('Web UI')
+    expect(s.getSnapshot().customGroups).toEqual([
+      { id: 'custom:1', name: '运维排查' },
+      { id: 'custom:2', name: 'Web UI' },
+    ])
+    expect(s.getSnapshot().customMembers).toEqual({ 'custom:1': [], 'custom:2': [] })
+    expect(s.getSnapshot().groupExpansion).toEqual({ 'custom:1': true, 'custom:2': true })
+    expect(s.getSnapshot().customGroupSeq).toBe(2)
+  })
+
+  it('renames only the named group and ignores an unknown id', () => {
+    const s = store()
+    s.actions.createCustomGroup('运维排查')
+    s.actions.renameCustomGroup('custom:1', '值班')
+    s.actions.renameCustomGroup('custom:9', 'nobody')
+    expect(s.getSnapshot().customGroups).toEqual([{ id: 'custom:1', name: '值班' }])
+  })
+
+  it('drops a group together with its membership and expansion', () => {
+    const s = store()
+    s.actions.createCustomGroup('运维排查')
+    s.actions.createCustomGroup('Web UI')
+    s.actions.moveCustomMember(sid('a'), 'custom:1')
+    s.actions.deleteCustomGroup('custom:1')
+    expect(s.getSnapshot().customGroups).toEqual([{ id: 'custom:2', name: 'Web UI' }])
+    expect(s.getSnapshot().customMembers).toEqual({ 'custom:2': [] })
+    expect(s.getSnapshot().groupExpansion).toEqual({ 'custom:2': true })
+  })
+
+  it('moves a member across groups, removing it from every other group', () => {
+    const s = store()
+    s.actions.createCustomGroup('first')
+    s.actions.createCustomGroup('second')
+    s.actions.moveCustomMember(sid('a'), 'custom:1')
+    s.actions.moveCustomMember(sid('a'), 'custom:2')
+    expect(s.getSnapshot().customMembers).toEqual({ 'custom:1': [], 'custom:2': ['a'] })
+  })
+
+  it('inserts before the anchor, appends without one, and ignores an unknown anchor', () => {
+    const s = store()
+    s.actions.createCustomGroup('运维排查')
+    s.actions.moveCustomMember(sid('a'), 'custom:1')
+    s.actions.moveCustomMember(sid('b'), 'custom:1')
+    s.actions.moveCustomMember(sid('c'), 'custom:1', sid('a'))
+    expect(s.getSnapshot().customMembers['custom:1']).toEqual(['c', 'a', 'b'])
+    s.actions.moveCustomMember(sid('c'), 'custom:1', sid('gone'))
+    expect(s.getSnapshot().customMembers['custom:1']).toEqual(['a', 'b', 'c'])
+  })
+
+  it('removes from every group when no target is named', () => {
+    const s = store()
+    s.actions.createCustomGroup('运维排查')
+    s.actions.moveCustomMember(sid('a'), 'custom:1')
+    s.actions.moveCustomMember(sid('a'), undefined)
+    expect(s.getSnapshot().customMembers['custom:1']).toEqual([])
+    // A group that does not exist yet is created rather than dropped, so a
+    // stale id cannot silently discard the move.
+    s.actions.moveCustomMember(sid('b'), undefined)
+    expect(s.getSnapshot().customMembers).toEqual({ 'custom:1': [] })
+  })
+
+  it('moves a group to the end, before another, and ignores an unknown id', () => {
+    const s = store()
+    s.actions.createCustomGroup('first')
+    s.actions.createCustomGroup('second')
+    s.actions.createCustomGroup('third')
+    const names = () => s.getSnapshot().customGroups.map(group => group.name)
+
+    s.actions.moveCustomGroup('custom:1')
+    expect(names()).toEqual(['second', 'third', 'first'])
+    s.actions.moveCustomGroup('custom:1', 'custom:2')
+    expect(names()).toEqual(['first', 'second', 'third'])
+    s.actions.moveCustomGroup('custom:3', 'custom:2')
+    expect(names()).toEqual(['first', 'third', 'second'])
+    // A stale anchor appends rather than dropping the move.
+    s.actions.moveCustomGroup('custom:1', 'custom:9')
+    expect(names()).toEqual(['third', 'second', 'first'])
+    s.actions.moveCustomGroup('custom:9', 'custom:1')
+    expect(names()).toEqual(['third', 'second', 'first'])
+  })
+
+  it('moves a group onto its own position without disturbing the order', () => {
+    const s = store()
+    s.actions.createCustomGroup('first')
+    s.actions.createCustomGroup('second')
+    s.actions.moveCustomGroup('custom:1', 'custom:1')
+    expect(s.getSnapshot().customGroups.map(group => group.name)).toEqual(['first', 'second'])
+  })
+
+  it('retains hand-made ids and prunes membership of a group the caller dropped', () => {
+    const s = store()
+    s.actions.createCustomGroup('运维排查')
+    s.actions.moveCustomMember(sid('a'), 'custom:1')
+    s.actions.setGroupExpanded('custom:1', false)
+    s.actions.retainAccountKeys(['alpha'])
+    expect(s.getSnapshot().customMembers).toEqual({ 'custom:1': ['a'] })
+    expect(s.getSnapshot().groupExpansion['custom:1']).toBe(false)
+
+    s.actions.deleteCustomGroup('custom:1')
+    s.actions.retainAccountKeys(['alpha'])
+    expect(s.getSnapshot().customMembers).toEqual({})
+    expect(s.getSnapshot().groupExpansion['custom:1']).toBeUndefined()
+  })
 })

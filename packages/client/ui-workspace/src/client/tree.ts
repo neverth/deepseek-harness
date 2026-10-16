@@ -32,6 +32,19 @@ export function owningGroupKey(
     ?.workspaceId as string | undefined) ?? UNGROUPED_KEY
 }
 
+/**
+ * Resolve the hand-made group that owns one Session in custom grouping mode.
+ * @param groups - hand-made groups with their saved membership.
+ * @param sessionId - Session whose browser group is required.
+ * @returns owning hand-made group id, or {@link UNGROUPED_KEY} when none names it.
+ */
+export function owningCustomGroupKey(
+  groups: readonly CustomGroupMembership[],
+  sessionId: SessionId,
+): string {
+  return groups.find(group => group.sessionIds.includes(sessionId))?.id ?? UNGROUPED_KEY
+}
+
 /** Pending interaction kinds with dedicated Workspace-row presentation. */
 export type SessionPendingInteractionStatus = 'approval' | 'plan-review' | 'question'
 type SessionStatuses = SessionStatusSnapshot
@@ -71,12 +84,14 @@ export type SessionOrderBy = 'manual' | 'updated'
 
 /** One workspace group section: header row facts + visible top-level session rows. */
 export interface GroupNode {
-  /** Group key: the workspace id or {@link UNGROUPED_KEY}. */
+  /** Group key: the workspace id, a hand-made group id, or {@link UNGROUPED_KEY}. */
   key: string
-  /** Backing Workspace id; absent only for the ungrouped bucket. */
+  /** Backing Workspace id; absent for a hand-made group and for the ungrouped bucket. */
   workspaceId: WorkspaceId | undefined
+  /** Backing hand-made group id; absent unless the section is one the user made. */
+  customGroupId?: string
   cwd: string | undefined
-  /** Workspace creation time (epoch ms); absent only for the ungrouped bucket. */
+  /** Workspace creation time (epoch ms); absent for a hand-made group and the ungrouped bucket. */
   createdAt: number | undefined
   label: string
   /** Total visible sessions in the group. */
@@ -86,6 +101,14 @@ export interface GroupNode {
   containsCurrent: boolean
   /** Visible session rows (empty while the group is folded). */
   sessions: readonly SessionNode[]
+}
+
+/** One hand-made group with the membership the browser holds for it. */
+export interface CustomGroupMembership {
+  id: string
+  name: string
+  /** Member ids in the user's order; ids the list no longer knows are ignored. */
+  sessionIds: readonly SessionId[]
 }
 
 /** One flat search row combining list metadata with an optional content match. */
@@ -493,6 +516,94 @@ export function deriveGroups(
     })
   }
   return groups
+}
+
+/**
+ * Derive the hand-made group sections: one section per group the user made,
+ * then an ungrouped bucket holding every Session no group accounts for.
+ *
+ * Membership is the browser's own saved list, so a Session the groups do not
+ * name falls to the bucket whether or not a Workspace knows it. Section order
+ * is the caller's group order; member order is the saved member order, with
+ * pinned rows leading. Everything else matches {@link deriveGroups}.
+ * @param list - sessions list snapshot.
+ * @param groups - hand-made groups with their saved membership, in display order.
+ * @param rowState - registry-global pin and archive sets plus the archived filter.
+ * @param statuses - unified UI status by Session.
+ * @param view - local expansion array and the bucket's saved order.
+ * @returns group sections in render order.
+ */
+export function deriveCustomGroups(
+  list: SessionListState,
+  groups: readonly CustomGroupMembership[],
+  rowState: SessionRowState,
+  statuses: SessionStatuses,
+  view: TreeView,
+): GroupNode[] {
+  const archived = new Set(rowState.archivedSessionIds)
+  const pinned = new Set(rowState.pinnedSessionIds)
+  const expandedGroups = new Set(view.expandedGroups)
+  const current = mainSessionId(list)
+  const currentGroup = current === undefined
+    ? undefined
+    : groups.find(group => group.sessionIds.includes(current))?.id ?? UNGROUPED_KEY
+  const sections: GroupNode[] = []
+  // Membership is accounted for before visibility: a Session the archived
+  // filter hides still belongs to its group rather than to the bucket.
+  const accounted = new Set<SessionId>()
+  const membersOf = (sessionIds: readonly SessionId[]): SessionSummary[] => {
+    const members: SessionSummary[] = []
+    for (const id of sessionIds) {
+      const summary = list.byId[id]
+      if (summary === undefined || accounted.has(id)) continue
+      accounted.add(id)
+      if (sessionVisible(summary, current, archived, rowState.archivedFilter)) members.push(summary)
+    }
+    return members
+  }
+  const section = (
+    key: string,
+    customGroupId: string | undefined,
+    label: string,
+    members: readonly SessionSummary[],
+  ): GroupNode => {
+    const isExpanded = expandedGroups.has(key)
+    return {
+      key,
+      workspaceId: undefined,
+      ...(customGroupId === undefined ? {} : { customGroupId }),
+      cwd: undefined,
+      createdAt: undefined,
+      label,
+      sessionCount: members.length,
+      expanded: isExpanded,
+      containsCurrent: key === currentGroup,
+      sessions: isExpanded
+        ? sectionMembers(members, pinned, archived)
+          .map(session => sessionNode(session, list, statuses, pinned, archived))
+        : [],
+    }
+  }
+  for (const group of groups) {
+    const members = membersOf(group.sessionIds)
+    // The archived-only view lists archives, not the group inventory, so a
+    // group without archived Sessions contributes no section — the same rule
+    // the Workspace grouping applies to a Workspace.
+    if (rowState.archivedFilter === 'only' && members.length === 0) continue
+    sections.push(section(group.id, group.id, group.name, members))
+  }
+  const stray = membersOf(list.ids)
+  if (stray.length > 0) {
+    const ordered = view.ungroupedOrder === undefined
+      ? orderByRecency(stray.map(summary => summary.id), list.byId)
+      : reconcileManualOrder(stray.map(summary => summary.id), view.ungroupedOrder, list.byId, rowState)
+    const byId = new Map(stray.map(summary => [summary.id, summary]))
+    sections.push(section(UNGROUPED_KEY, undefined, '', ordered.flatMap((id) => {
+      const summary = byId.get(id)
+      return summary === undefined ? [] : [summary]
+    })))
+  }
+  return sections
 }
 
 /**

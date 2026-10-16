@@ -274,6 +274,12 @@ export type WorkspaceBrowserInjected = {
   unarchiveSession: (sessionId: SessionId) => Promise<void>
   /** Adopt a picked host directory as a real Workspace before targeting a Session. */
   createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
+  /** Create a hand-made group under this name. */
+  createCustomGroup: (name: string) => void
+  /** Rename one hand-made group. */
+  renameCustomGroup: (groupId: string, name: string) => void
+  /** Drop one hand-made group; its members return to the ungrouped bucket. */
+  deleteCustomGroup: (groupId: string) => void
 }
 
 /** The browser's declared viewing store handle, shared with the row actions that write view state. */
@@ -413,6 +419,51 @@ export interface SessionIdInjected {
   copySessionId: (sessionId: SessionId) => Promise<void>
 }
 
+/** One hand-made group as a move target: identity, label, and current members. */
+export interface CustomGroupOption {
+  id: string
+  name: string
+  /**
+   * Member ids as the store holds them — plain strings, compared by value to
+   * decide the Session's current group without a second read.
+   */
+  sessionIds: readonly string[]
+}
+
+/** A move the row menu asked for; the picker dialog opens on it. */
+export interface MoveToGroupRequest {
+  sessionId: SessionId
+  displayTitle: string
+}
+
+/**
+ * Row-menu share of the move action. The group list is a hook because a
+ * registration's inject result is memoized for its lifetime, so groups read
+ * as values there would freeze at whatever the first render saw.
+ */
+export interface MoveToGroupInjected {
+  hooks: {
+    /** Hand-made groups the Session may move into, empty in deployments that made none. */
+    customGroups: HostObservable<readonly CustomGroupOption[]>
+  }
+  /** Open the picker dialog for this Session. */
+  requestMoveToGroup: (sessionId: SessionId, displayTitle: string) => void
+}
+
+/** Picker dialog share: the pending request, its settlement, the live group list, and the local membership write. */
+export interface GroupPickerInjected {
+  hooks: {
+    /** The move asked for, until the dialog consumes or cancels it. */
+    moveRequest: HostObservable<MoveToGroupRequest | null>
+    /** Hand-made groups to choose from. */
+    customGroups: HostObservable<readonly CustomGroupOption[]>
+  }
+  /** Consume or cancel the pending request. */
+  settleMoveToGroup: () => void
+  /** Place the Session in a group, or remove it from every group when `groupId` is absent. */
+  moveSessionToGroup: (sessionId: SessionId, groupId: string | undefined) => void
+}
+
 /** A Session rename the rename action asked for; the dialog entry opens on it. */
 export interface SessionRenameTarget {
   /** Session to rename. */
@@ -459,6 +510,13 @@ export type SessionRenameDialogProps =
   & PropsLocale<'workspace'>
   & Omit<SessionRenameDialogInjected, 'hooks'>
   & PropsHooks<SessionRenameDialogInjected['hooks']>
+
+/** Props of the group picker dialog entry in `shell.overlay`. */
+export type GroupPickerProps =
+  PropsRuntime<'shell.overlay'>
+  & PropsLocale<'workspace'>
+  & Omit<GroupPickerInjected, 'hooks'>
+  & PropsHooks<GroupPickerInjected['hooks']>
 
 /** Props of the stop-and-archive dialog entry in `shell.overlay`. */
 export type SessionArchiveConfirmProps =
