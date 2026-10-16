@@ -16,6 +16,7 @@ const roots: Context[] = []
 afterEach(async () => {
   await Promise.all(roots.splice(0).map(ctx => ctx.fiber.dispose()))
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 function bench() {
@@ -89,7 +90,7 @@ describe('Session running status', () => {
 
     b.list.update((draft) => { draft.ids.push(id) })
     expect(service.getSnapshot().get(id)?.running).toBe(false)
-    expect(service.getSnapshot().get(id)?.completionUnread).toBe(false)
+    expect(service.getSnapshot().get(id)?.completionUnread).toBe(true)
   })
 
   it('publishes running changes from list rows and status events, and skips unchanged status', () => {
@@ -101,7 +102,7 @@ describe('Session running status', () => {
     const off = service.subscribe(changed)
 
     expect(service.getSnapshot().get(id)).toEqual({
-      running: false, pendingInteraction: undefined, completionUnread: false, completionFailed: false,
+      running: false, pendingInteraction: undefined, completionUnread: false, completionPendingAck: false, completionFailed: false,
     })
     b.list.update((draft) => { draft.byId[id]!.running = true })
     expect(service.getSnapshot().get(id)?.running).toBe(true)
@@ -122,7 +123,7 @@ describe('Session running status', () => {
 
     b.emitStatus(id, false)
     expect(service.getSnapshot().get(id)).toEqual({
-      running: false, pendingInteraction: undefined, completionUnread: false, completionFailed: false,
+      running: false, pendingInteraction: undefined, completionUnread: true, completionPendingAck: false, completionFailed: false,
     })
     b.list.update((draft) => { draft.phase = 'ready' })
     expect(service.getSnapshot().has(id)).toBe(false)
@@ -148,48 +149,98 @@ describe('Session running status', () => {
 })
 
 describe('Session reading reminders', () => {
-  it('derives unread and failed reminders from Host reading records', () => {
+  it('keeps observed completion reminders until explicit acknowledgement and reads Host failure metadata', () => {
     const b = bench()
     const id = sessionId('s1')
     b.row(id)
     const service = b.status()
     b.emitStatus(id, true)
     b.emitStatus(id, false)
-    expect(service.getSnapshot().get(id)?.completionUnread).toBe(false)
+    expect(service.getSnapshot().get(id)?.completionUnread).toBe(true)
     b.reading.set({ ready: true, items: { [id]: b.record(id, { completedTurn: 1, failed: true }) } })
     expect(service.getSnapshot().get(id)).toMatchObject({ completionUnread: true, completionFailed: true })
     b.reading.set({ ready: true, items: { [id]: b.record(id, { completedTurn: 2 }) } })
     expect(service.getSnapshot().get(id)).toMatchObject({ completionUnread: true, completionFailed: false })
     b.reading.set({ ready: true, items: { [id]: b.record(id, { completedTurn: 2, readTurn: 2, failed: true }) } })
+    expect(service.getSnapshot().get(id)).toMatchObject({ completionUnread: true, completionFailed: true })
+    service.acknowledgeCompletion(id)
     expect(service.getSnapshot().get(id)).toMatchObject({ completionUnread: false, completionFailed: false })
     b.reading.set({ ready: true, items: { [id]: b.record(id, { completedTurn: 2, readTurn: 2, manualUnread: true }) } })
     expect(service.getSnapshot().get(id)).toMatchObject({ completionUnread: true, completionFailed: false })
   })
 
-  it('preserves a Host reminder through main view selection and running changes', () => {
+  it('records every completion and downgrades a main-view open to an explicit acknowledgement', () => {
     const b = bench()
     const id = sessionId('s1')
     b.row(id)
     const service = b.status()
-    b.reading.set({ ready: true, items: { [id]: b.record(id, { completedTurn: 1 }) } })
+    b.emitStatus(id, true)
+    b.emitStatus(id, false)
     expect(service.getSnapshot().get(id)?.completionUnread).toBe(true)
     b.setMainView(id, 1)
+    expect(service.getSnapshot().get(id)).toMatchObject({ completionUnread: false, completionPendingAck: true })
+    service.acknowledgeCompletion(id)
+    expect(service.getSnapshot().get(id)?.completionPendingAck).toBe(false)
+    b.setMainView(id, 0)
     b.emitStatus(id, true)
+    b.emitStatus(id, false)
     expect(service.getSnapshot().get(id)?.completionUnread).toBe(true)
-    b.reading.set({ ready: true, items: { [id]: b.record(id, { completedTurn: 1, readTurn: 1, manualUnread: true }) } })
+    b.setMainView(id, 1)
+    expect(service.getSnapshot().get(id)).toMatchObject({ completionUnread: false, completionPendingAck: true })
+    b.emitStatus(id, true)
+    expect(service.getSnapshot().get(id)).toMatchObject({ completionUnread: false, completionPendingAck: false })
+    b.emitStatus(id, false)
     expect(service.getSnapshot().get(id)?.completionUnread).toBe(true)
-    b.reading.set({ ready: true, items: { [id]: b.record(id, { completedTurn: 1, readTurn: 1 }) } })
+    b.setMainView(id, 0)
+    b.setMainView(id, 1)
+    expect(service.getSnapshot().get(id)).toMatchObject({ completionUnread: false, completionPendingAck: true })
+    b.setMainView(id, 0)
+    b.emitStatus(id, false)
     expect(service.getSnapshot().get(id)?.completionUnread).toBe(false)
+    b.emitStatus(id, true)
+    b.emitStatus(id, false)
+    expect(service.getSnapshot().get(id)?.completionUnread).toBe(true)
+    b.emitStatus(id, true)
+    expect(service.getSnapshot().get(id)?.completionUnread).toBe(false)
+    expect(service.getSnapshot().get(id)?.completionPendingAck).toBe(false)
   })
 
-  it('retains a shared reminder for a Session that left the catalog', () => {
+  it('retires local reminders for a Session that left the ready catalog', () => {
     const b = bench()
     const id = sessionId('evicted')
     const service = b.status()
     b.emitStatus(id, true)
-    b.reading.set({ ready: true, items: { [id]: b.record(id, { completedTurn: 1 }) } })
+    b.emitStatus(id, false)
     b.list.set({ ids: [], byId: {}, phase: 'ready', projectionsBySession: {} })
-    expect(service.getSnapshot().get(id)).toMatchObject({ running: undefined, completionUnread: true })
+    expect(service.getSnapshot().has(id)).toBe(false)
+  })
+
+  it('restores both original storage keys, sweeps absent identities, and persists explicit acknowledgement', () => {
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => { store.set(key, value) },
+    })
+    const unreadId = sessionId('stored-unread')
+    const ackId = sessionId('stored-ack')
+    const unreadKey = 'dsh.session-completion-unread.v1'
+    const ackKey = 'dsh.session-completion-pending-ack.v1'
+    const b = bench()
+    b.row(unreadId)
+    b.row(ackId)
+    store.set(unreadKey, JSON.stringify([unreadId, 'session-elsewhere']))
+    store.set(ackKey, JSON.stringify([ackId]))
+    const service = b.status()
+    expect(service.getSnapshot().get(unreadId)?.completionUnread).toBe(true)
+    expect(service.getSnapshot().get(ackId)?.completionPendingAck).toBe(true)
+    service.acknowledgeCompletion(unreadId)
+    expect(JSON.parse(store.get(unreadKey) ?? 'null')).toEqual([])
+    expect(JSON.parse(store.get(ackKey) ?? 'null')).toEqual([ackId])
+    const reloaded = b.status()
+    expect(reloaded.getSnapshot().get(unreadId)?.completionUnread).toBe(false)
+    expect(reloaded.getSnapshot().get(ackId)?.completionPendingAck).toBe(true)
+    reloaded.acknowledgeCompletion(ackId)
+    expect(JSON.parse(store.get(ackKey) ?? 'null')).toEqual([])
   })
 
   it('reports reading readiness and forwards explicit marks', async () => {
@@ -224,11 +275,11 @@ describe('Session status pending interactions', () => {
 
     b.pending.set(new Map([[listed, approval], [unlisted, question]]))
     expect(service.getSnapshot().get(listed)).toEqual({
-      running: false, pendingInteraction: approval, completionUnread: false, completionFailed: false,
+      running: false, pendingInteraction: approval, completionUnread: false, completionPendingAck: false, completionFailed: false,
     })
     expect(service.getSnapshot().get(listed)?.pendingInteraction).toBe(approval)
     expect(service.getSnapshot().get(unlisted)).toEqual({
-      running: undefined, pendingInteraction: question, completionUnread: false, completionFailed: false,
+      running: undefined, pendingInteraction: question, completionUnread: false, completionPendingAck: false, completionFailed: false,
     })
     expect(changed).toHaveBeenCalledOnce()
 
