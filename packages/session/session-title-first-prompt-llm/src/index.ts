@@ -1,4 +1,4 @@
-/** First-human-message model provider for `ctx.sessionTitle`. */
+/** Title provider for `ctx.sessionTitle`: the first human message, then periodic refreshes. */
 
 /* jscpd:ignore-start -- both shipped providers import the same shared packages. */
 import type { Context } from '@deepseek-ai/cordis'
@@ -77,19 +77,33 @@ const selectReasoningEffort = (model: Readonly<LlmResolvedModelInfo>): Reasoning
 /* jscpd:ignore-end */
 
 /* jscpd:ignore-start -- independent provider strategies share only the execution module, not prompt or parsing policy. */
-/** Language-aware system instruction for a title derived from one message. */
-function systemPrompt(config: ResolvedConfig): string {
+/**
+ * Trailing human messages supplied to one call. A refresh names the session
+ * from where the conversation currently stands, while a session shorter than
+ * the window sends everything it has — the first message included.
+ */
+const MESSAGE_WINDOW = 10
+
+/** Language-aware system instruction, with a stability rule when a provider title is anchored. */
+function systemPrompt(config: ResolvedConfig, hasCurrentTitle: boolean): string {
   return [
     'Create a concise title for an AI coding-assistant session from the supplied human messages.',
     'Return only the title on one line, **in plain text of natural language**, with no quotes, prefix, explanation, Markdown, XML, or terminal control codes. No code is allowed.',
     'Use the language of the messages.',
     `Aim for about ${config.targetWords} words in non-CJK languages or ${config.targetCjkCharacters} CJK characters.`,
     'If the messages give little to name, still return a short best-effort title, such as Greeting, instead of explaining.',
+    ...hasCurrentTitle ? [
+      'An existing title is supplied as currentTitle. Keep it exactly unchanged while it still describes the session.',
+      'Change it only when the messages materially change or expand the session topic.',
+    ] : [],
   ].join('\n')
 }
 
-/** Frame the selected messages as JSON so user text cannot break structural delimiters. */
-function frameMessages(messages: readonly SessionTitleUserMessage[]): string {
+/** Frame messages as JSON so user text cannot break structural delimiters. */
+function frameMessages(messages: readonly SessionTitleUserMessage[], currentTitle?: string): string {
+  if (currentTitle !== undefined) {
+    return `Update the session title from this JSON object:\n${JSON.stringify({ currentTitle, messages })}`
+  }
   return `Generate the session title from this JSON array of human messages:\n${JSON.stringify(messages)}`
 }
 
@@ -149,17 +163,20 @@ export function apply(ctx: Context, config: Config): void {
     id: titleProvider,
     automatic: 'first-prompt',
     async generate(request) {
-      const first = request.messages[0]
+      const messages = request.messages.slice(-MESSAGE_WINDOW)
+      const first = messages[0]
       if (first === undefined) throw new Error('first-prompt title provider requires one human message')
+      const anchor = request.currentTitle?.source.kind === 'provider' ? request.currentTitle.title : undefined
+      const messageSeqs = messages.map(message => message.seq)
       const response = await executeSessionTitleLlm(ctx, resolved, request, titleProvider, {
-        system: systemPrompt(resolved),
-        input: frameMessages([first]),
-        messageSeqs: [first.seq],
+        system: systemPrompt(resolved, anchor !== undefined),
+        input: frameMessages(messages, anchor),
+        messageSeqs,
         selectReasoningEffort,
       })
       return {
         title: titleFromResponse(response),
-        messageSeqs: [first.seq],
+        messageSeqs,
         model: response.model,
       }
     },

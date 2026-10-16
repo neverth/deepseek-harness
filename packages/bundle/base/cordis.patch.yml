@@ -67,8 +67,11 @@
     - id: session-title-llm
       name: '@deepseek-ai/dsh-session-title-first-prompt-llm'
       config:
-        targetWords: 5
-        targetCjkCharacters: 10
+        # Room for a descriptive title: a longer budget lets the model name the
+        # concrete subject and task instead of settling for a bare label, while
+        # staying inside maxTitleBytes (20 CJK characters is 60 bytes).
+        targetWords: 10
+        targetCjkCharacters: 20
         maxInputBytes: 4096
         # A ceiling against runaway output, not a length target: the prompt
         # keeps titles short, while reasoning a model cannot switch off also

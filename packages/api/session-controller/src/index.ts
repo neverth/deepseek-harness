@@ -56,6 +56,8 @@ import type {
   SessionPromptValue,
   SessionRenameRequest,
   SessionRenameValue,
+  SessionTitleRefreshRequest,
+  SessionTitleRefreshValue,
   SessionSearchRequest,
   SessionSearchValue,
   SessionSelectModelRequest,
@@ -436,6 +438,18 @@ export class SessionController extends TypertRemoteService {
   @Remote('rename')
   rename(request: SessionRenameRequest): Promise<SessionRenameValue> {
     return this.commands.rename(request)
+  }
+
+  /**
+   * Regenerate one Session's title from its conversation after explicitly
+   * resuming it. The registered provider decides the outcome; a user rename
+   * stays pinned.
+   * @param request - Session identity.
+   * @returns the accepted title and durable event sequence, or an empty value.
+   */
+  @Remote('refreshTitle')
+  refreshTitle(request: SessionTitleRefreshRequest): Promise<SessionTitleRefreshValue> {
+    return this.commands.refreshTitle(request)
   }
 
   /**
