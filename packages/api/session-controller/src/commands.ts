@@ -49,6 +49,8 @@ import type {
   SessionRenameValue,
   SessionSelectModelRequest,
   SessionSelectModelValue,
+  SessionTitleRefreshRequest,
+  SessionTitleRefreshValue,
   SessionUpdateQueueRequest,
   SessionUpdateQueueValue,
   SessionRequestId,
@@ -215,6 +217,36 @@ export class SessionCommandController {
         {},
       )
     }
+  }
+
+  /**
+   * Re-run the registered title provider over one Session's conversation after
+   * explicitly resuming it. A user-owned title stays pinned: the service
+   * refuses rather than letting a provider overwrite it.
+   * @param request - Session identity.
+   * @returns the accepted title and event seq, or an empty value when nothing was accepted.
+   */
+  async refreshTitle(request: SessionTitleRefreshRequest): Promise<SessionTitleRefreshValue> {
+    const agent = await this.resolveAgent(request.sessionId)
+    const titles = this.ctx.get('sessionTitle')
+    if (titles === undefined) {
+      throw new RemoteError(
+        'gateway/internal',
+        'regenerating the title is unavailable: this deployment mounts no session-title service',
+        {},
+      )
+    }
+    let accepted: Awaited<ReturnType<typeof titles.refresh>>
+    try {
+      accepted = await titles.refresh(agent.session)
+    } catch (error) {
+      throw new RemoteError(
+        'gateway/internal',
+        `failed to regenerate the title of session "${request.sessionId}": ${String(error)}`,
+        { sessionId: request.sessionId },
+      )
+    }
+    return accepted === undefined ? {} : { title: accepted.title, seq: accepted.eventSeq }
   }
 
   /**

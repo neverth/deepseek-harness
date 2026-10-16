@@ -31,7 +31,7 @@ kind: "package-library"
 
 提供方插件直接注册到 `ctx.sessionTitle`，并在其 `generate(request)` 中把 `{ system, input, messageSeqs, selectReasoningEffort }` 传给 `executeSessionTitleLlm`。提供方负责系统指令、输入封装、自己的推理选择与输出解释；该函数负责路由准备、上限、取消、请求记录与流式组装。服务上的第二次注册会立即抛出。
 
-每个请求都带有 `currentTitle`，即服务在调用时捕获的最新已接纳标题快照，包括已接纳的回退标题。提供方自行决定是否使用它：全消息提供方只锚定来源为提供方的标题（包括继承自不同提供方的标题），并把回退、用户与不存在的标题视为初始生成。首消息提供方忽略 `currentTitle`。
+每个请求都带有 `currentTitle`，即服务在调用时捕获的最新已接纳标题快照，包括已接纳的回退标题。提供方自行决定是否使用它：全消息提供方只锚定来源为提供方的标题（包括继承自不同提供方的标题），并把回退、用户与不存在的标题视为初始生成。首消息提供方在其周期性刷新中按同样规则锚定来源为提供方的标题。
 
 ### 路由与失败约定
 
@@ -85,7 +85,7 @@ kind: "package-library"
 
 - [会话标题服务](../session-title/README.zh.md)——标题服务、回退行为与提供方注册约定。
 - [会话标题子系统](../../../docs/subsystems/session-title.zh.md)——持久标题状态与辅助请求记录。
-- [首消息标题提供方](../session-title-first-prompt-llm/README.zh.md)——根据第一条符合条件的用户消息生成标题。
+- [首消息标题提供方](../session-title-first-prompt-llm/README.zh.md)——根据第一条符合条件的用户消息生成标题，并按周期依据最近的对话刷新。
 - [全消息标题提供方](../../experimental/session-title-all-prompts-llm/README.zh.md)——根据所有符合条件的用户消息生成标题。
 - [会话包映射](../README.zh.md)——相邻的持久化、投影、标题与遥测包。
 

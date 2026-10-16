@@ -119,6 +119,13 @@ export interface ISession {
    */
   rename(title: string): Promise<RemoteResult<{ title: string; seq: SessionSeq }>>
   /**
+   * Regenerate this session's title from its conversation through the
+   * registered provider. A user-owned title stays pinned, so the refresh
+   * reports nothing accepted rather than replacing it.
+   * @returns the accepted title and its event seq, or the business error.
+   */
+  refreshTitle(): Promise<RemoteResult<{ title?: string; seq?: SessionSeq }>>
+  /**
    * Extend history by at least 500 messages and two Turn starts, including a
    * partial Turn at the window's beginning. Stop at 500 messages or history
    * exhaustion even when those minima cannot be met. Publish one prepend.

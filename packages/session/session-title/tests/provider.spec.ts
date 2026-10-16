@@ -180,6 +180,54 @@ describe('SessionTitleService Provider lifecycle', () => {
     expect(requests[1]?.messages.map(message => message.seq)).toEqual([first.seq, second.seq])
   })
 
+  it('re-runs a first-prompt provider every third later human message', async () => {
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionTitleService, CONFIG)
+    const requests: SessionTitleProviderRequest[] = []
+    ctx.sessionTitle.register({
+      id: SessionTitleProviderId('periodic'),
+      automatic: 'first-prompt',
+      async generate(request) {
+        requests.push(request)
+        return { title: `Revision ${requests.length}`, messageSeqs: [request.messages.at(-1)!.seq] }
+      },
+    })
+    const session = ctx.sessions.create(SessionId('periodic-first-prompt'))
+    const prompts: SessionSeq[] = []
+    const prompt = async (index: number): Promise<void> => {
+      prompts.push(appendHumanPrompt(session, `Prompt ${index}`).seq)
+      await settle()
+      appendRoute(session, 'change')
+      await settle()
+    }
+
+    await prompt(1)
+    expect(requests).toHaveLength(1)
+
+    for (const index of [2, 3]) await prompt(index)
+    expect(requests).toHaveLength(1)
+
+    for (const index of [4, 5, 6]) await prompt(index)
+    expect(requests).toHaveLength(2)
+
+    await prompt(7)
+    expect(requests).toHaveLength(3)
+
+    expect(requests.map(request => request.messages.map(message => message.seq))).toEqual([
+      [prompts[0]],
+      prompts.slice(0, 4),
+      prompts.slice(0, 7),
+    ])
+    expect(ctx.sessionTitle.get(session)).toMatchObject({
+      title: 'Revision 3',
+      messageSeqs: [prompts[6]],
+      source: { kind: 'provider', provider: SessionTitleProviderId('periodic') },
+    })
+  })
+
   it('omits currentTitle when a one-byte cap makes the fallback underivable from a multibyte message', async () => {
     const ctx = new Context()
     onTestFinished(() => ctx.fiber.dispose())
