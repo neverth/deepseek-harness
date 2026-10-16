@@ -8,6 +8,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { WorkspaceCommands } from './commands.ts'
 import { DirectoryPickerController } from './directory-picker.ts'
 import { WorkspaceFeed, workspaceView } from './feed.ts'
+import { WorkspaceViewStore } from './view.ts'
 import { defaultWorkspaceDirectory, validateDocumentsDirectory } from './default-directory.ts'
 import type {
   WorkspaceArchiveSessionRequest,
@@ -28,10 +29,13 @@ import type {
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
   WorkspaceValue,
+  WorkspaceViewSnapshot,
+  WorkspaceViewSnapshotRequest,
 } from './types.ts'
 
 export type * from './types.ts'
 export { DirectoryPickerController } from './directory-picker.ts'
+export { WorkspaceViewStore, workspaceViewDomain } from './view.ts'
 
 /** First-use directory policy for the Host account. */
 export interface Config {
@@ -53,7 +57,7 @@ declare module '@deepseek-ai/cordis' {
 
 /** Host service backing the generated `ctx.remote.workspace` namespace. */
 export class WorkspaceController extends TypertRemoteService {
-  static inject = ['remoteAccess', 'typert', 'workspaceRegistry']
+  static inject = ['remoteAccess', 'typert', 'workspaceRegistry', 'storageDomain']
 
   static Config: z<Config, ResolvedConfig> = z.object({
     documentsDirectory: z.string(),
@@ -63,6 +67,7 @@ export class WorkspaceController extends TypertRemoteService {
   private readonly config: ResolvedConfig
   private readonly commands: WorkspaceCommands
   private readonly feed: WorkspaceFeed
+  private readonly view: WorkspaceViewStore
 
   /**
    * @param ctx - Host context containing the Workspace registry.
@@ -75,6 +80,7 @@ export class WorkspaceController extends TypertRemoteService {
     if (this.config.documentsDirectory !== undefined) validateDocumentsDirectory(this.config.documentsDirectory)
     this.commands = new WorkspaceCommands(ctx)
     this.feed = new WorkspaceFeed(ctx)
+    this.view = new WorkspaceViewStore(ctx)
     // This package is the Loader entry for both Remote owners it hosts: the
     // directory-picking seam is abstract and never an entry itself. The child
     // stays pending until a picking backend is composed, so a host without one
@@ -189,6 +195,17 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote('unpinSession')
   unpinSession(request: WorkspaceUnpinSessionRequest): Promise<WorkspacePinValue> {
     return this.commands.unpinSession(request)
+  }
+
+  /**
+   * Store one snapshot of a client's sidebar view document when it changed,
+   * keeping only the newest changed states.
+   * @param request - the pushing client's complete document.
+   * @returns the stored snapshot, or undefined when it repeats the newest one.
+   */
+  @Remote('saveViewSnapshot')
+  saveViewSnapshot(request: WorkspaceViewSnapshotRequest): Promise<WorkspaceViewSnapshot | undefined> {
+    return this.view.record(request.document)
   }
 
   /**

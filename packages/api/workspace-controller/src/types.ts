@@ -13,6 +13,8 @@ export type {
   SessionActivity, SessionActivityItem, SessionActivityKind, SessionActivityKindMap,
 } from '@deepseek-ai/dsh-workspace/types'
 export type { DirectoryEntry, DirectoryListing } from '@deepseek-ai/dsh-host-directory-picker/types'
+import type { WorkspaceViewDocument, WorkspaceViewSnapshot } from './view.ts'
+export type { WorkspaceViewDocument, WorkspaceViewSnapshot }
 
 /** One durable Workspace projected for browser consumers. */
 export interface WorkspaceView {
@@ -102,6 +104,11 @@ export interface WorkspaceInsertBeforeRequest {
 /** Complete Workspace registry order after a mutation. */
 export interface WorkspaceOrderValue {
   readonly workspaceIds: readonly WorkspaceId[]
+}
+
+/** One client's push of its current sidebar view document. */
+export interface WorkspaceViewSnapshotRequest {
+  readonly document: WorkspaceViewDocument
 }
 
 /** DOM-insertBefore-like Session membership order mutation. */
