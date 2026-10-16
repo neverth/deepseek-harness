@@ -82,7 +82,7 @@ const selectReasoningEffort = (model: Readonly<LlmResolvedModelInfo>): Reasoning
  * from where the conversation currently stands, while a session shorter than
  * the window sends everything it has — the first message included.
  */
-const MESSAGE_WINDOW = 3
+const MESSAGE_WINDOW = 10
 
 /** Language-aware system instruction, with a stability rule when a provider title is anchored. */
 function systemPrompt(config: ResolvedConfig, hasCurrentTitle: boolean): string {

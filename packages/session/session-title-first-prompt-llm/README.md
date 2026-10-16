@@ -86,7 +86,7 @@ Read these pages when the provider contract is not enough. They move from the sh
 
 #### What the model sees
 
-The title model receives this provider's title instruction and a JSON array of the human messages the call covers: the first eligible message alone on initial generation, otherwise the most recent three. A refresh also receives the current provider title as `currentTitle` in a JSON object, with a stability rule to keep it while it still describes the session. Inherited fork history does not trigger another automatic call.
+The title model receives this provider's title instruction and a JSON array of the human messages the call covers: the first eligible message alone on initial generation, otherwise the most recent ten. A refresh also receives the current provider title as `currentTitle` in a JSON object, with a stability rule to keep it while it still describes the session. Inherited fork history does not trigger another automatic call.
 
 #### Token effect
 
