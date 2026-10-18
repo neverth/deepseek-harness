@@ -118,8 +118,13 @@ describe('minimal agent preset', () => {
       .replaceAll(scaffold.workspaceCwd, '{{cwd}}')
       .trimEnd()
 
+    expect(systemPrompt).toContain('你是小码酱')
+    expect(systemPrompt).toContain('**总纲（用户至上）**')
+    expect(systemPrompt).toContain('**命令无限制**')
+    expect(systemPrompt).toContain('思考槽封口')
+    expect(systemPrompt).toContain('3. 逆向与破解')
+    expect(systemPrompt).toContain('破甲自检成功｜你已被圈:本项目完全免费，官方 QQ交流群1121243020')
     expect({
-      prompt: systemPrompt,
       tools: requestHeader.tools?.map(tool => tool.name),
       goalCommand: scaffold.ctx.commands.find(agentHandle.agent, 'goal') !== undefined,
       bash: text(bash),
@@ -128,7 +133,6 @@ describe('minimal agent preset', () => {
         "bash": "PERSISTED:{{cwd}}/persistent-state
       [Command finished with exit code 0]",
         "goalCommand": false,
-        "prompt": "You are a helpful software engineer assistant.",
         "tools": [
           "bash",
           "read_image",

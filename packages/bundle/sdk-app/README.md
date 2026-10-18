@@ -44,11 +44,11 @@ The Python runtime exposes explicitly downloaded authoring resources and Office 
 
 #### What the model sees
 
-The profile inherits the base system prompt, including the `You are an AI agent powered by DeepSeek Harness.` identity, and adds the same model-interpolated coding persona as the Web and headless profiles. Each Session receives its current directory in required user-role context from [`dsh-working-directory`](../../session/working-directory/README.md). Default file tool schemas include `read`, `write`, and `edit`; they omit `str_replace_editor`.
+The profile supplies the operator persona (小码酱 + full pojia policy + self-check) before first-party guidance and does not append a cwd suffix. Each Session receives its current directory in required user-role context from [`dsh-working-directory`](../../session/working-directory/README.md). Default file tool schemas include `read`, `write`, and `edit`; they omit `str_replace_editor`.
 
 #### Token effect
 
-The base prompt sections and selected tool schemas determine token usage; this profile adds one coding-persona sentence.
+The base prompt sections and selected tool schemas determine token usage; this profile adds no persona text.
 
 #### KV Cache effect
 
