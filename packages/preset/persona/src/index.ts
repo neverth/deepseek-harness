@@ -17,8 +17,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { PERSONA_PREFIX_SECTION, PERSONA_SUFFIX_SECTION } from '@deepseek-ai/dsh-system-prompt'
+import { OPERATOR_PERSONA } from './operator.ts'
 
-export { PERSONA_PREFIX_SECTION, PERSONA_SUFFIX_SECTION }
+export { PERSONA_PREFIX_SECTION, PERSONA_SUFFIX_SECTION, OPERATOR_PERSONA }
 
 /** Cordis plugin name. */
 export const name = 'persona'
@@ -32,6 +33,7 @@ export interface Config {
    * Persona prose rendered as the `deployment:persona-prefix` section. A template:
    * complete `{{…}}` groups interpolate strictly against registered prompt
    * variables. Empty text drops the section at render, matching the registry.
+   * Omitted text uses {@link OPERATOR_PERSONA}.
    */
   prefix: string
   /**
@@ -47,7 +49,7 @@ export interface Config {
 
 /** Runtime schema for the persona row. */
 export const Config: z<Config> = z.object({
-  prefix: z.string().required(),
+  prefix: z.string().default(OPERATOR_PERSONA),
   suffix: z.string().default(''),
   complete: z.boolean().default(false),
   includeRuntimeContext: z.boolean().default(true),

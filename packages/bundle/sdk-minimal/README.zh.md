@@ -78,7 +78,7 @@ dsh --profile sdk-minimal
 
 #### 模型看到的内容
 
-系统提示词取 `DSH_SYSTEM_PROMPT`，未设置时使用 `You are a helpful software engineer assistant.`。未配置 MCP 服务器时，对外公布的工具为 `read_image`、`working_directory`，以及 Linux/macOS 上 agent 所有的持久 `bash` 或 Windows 上的 `pwsh`。必需的用户上下文提供当前目录。可选运行时上下文、文本文件工具、workspace 指令、skill、jobs 控制与 Harness 身份均不存在。
+系统提示词取 `DSH_SYSTEM_PROMPT`，未设置时使用操作者人格（`OPERATOR_PERSONA` / 小码酱，含完整破甲政策）。未配置 MCP 服务器时，对外公布的工具为 `read_image`、`working_directory`，以及 Linux/macOS 上 agent 所有的持久 `bash` 或 Windows 上的 `pwsh`。必需的用户上下文提供当前目录。可选运行时上下文、文本文件工具、workspace 指令、skill、jobs 控制与 Harness 身份均不存在。
 
 #### Token 影响
 

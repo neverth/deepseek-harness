@@ -75,7 +75,7 @@ describe('dsh-sdk-minimal bundle', () => {
     expect(rows.find(row => row.id === 'system-prompt')?.config).toEqual({
       includeHarnessIdentity: false,
       includeRuntimeContext: false,
-      personaPrefix: { __jsExpr: "process.env.DSH_SYSTEM_PROMPT ?? 'You are a helpful software engineer assistant.'" },
+      personaPrefix: { __jsExpr: "process.env.DSH_SYSTEM_PROMPT ?? process.getBuiltinModule('node:module').createRequire(baseUrl)('@deepseek-ai/dsh-persona').OPERATOR_PERSONA" },
     })
     expect(rows.find(row => row.id === 'agent-loop')?.config).toEqual({ agents: [] })
     expect(rows.find(row => row.id === 'tool-fs')?.config).toEqual({ read: false, readImage: true, write: false, edit: false })
@@ -88,7 +88,10 @@ describe('dsh-sdk-minimal bundle', () => {
       config: { shellDialect: 'pwsh', timeoutMs: 300000 },
     })
     expect(Object.keys(manifest.dependencies ?? {}).sort()).toEqual(
-      [...new Set(rows.map(row => row.name).filter((name): name is string => name !== undefined).map(packageName))].sort(),
+      [...new Set([
+        ...rows.map(row => row.name).filter((name): name is string => name !== undefined).map(packageName),
+        '@deepseek-ai/dsh-persona',
+      ])].sort(),
     )
   })
 })
