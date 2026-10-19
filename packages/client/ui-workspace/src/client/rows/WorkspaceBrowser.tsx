@@ -52,17 +52,10 @@ const EXPAND_SLIDE_MS = 300
 const SEARCH_DEBOUNCE_MS = 250
 /** `session.search` wire bound, measured in JavaScript UTF-16 code units. */
 const SEARCH_QUERY_MAX_CODE_UNITS = 500
-/** Non-blank Session rows visible in a group while no Session raises its watermark. */
-const SESSION_WATERMARK_BASE = 5
-/** Row limit of the ungrouped bucket, which collects every Session no group claimed. */
-const SESSION_WATERMARK_UNGROUPED = 10
+/** Non-blank Session rows visible in a section while no Session raises its watermark. */
+const SESSION_WATERMARK_BASE = 3
 /** Highest watermark that attention-bearing Sessions raise automatically; Show more and search reveals may exceed it. */
 const SESSION_WATERMARK_AUTO_MAX = 50
-
-/** Row limit of one section: the ungrouped bucket shows a longer head than a named group. */
-function sectionRowLimit(key: string): number {
-  return key === UNGROUPED_KEY ? SESSION_WATERMARK_UNGROUPED : SESSION_WATERMARK_BASE
-}
 
 /**
  * Show the blank row, the first `watermark` non-blank rows, and every unread
@@ -112,7 +105,7 @@ function raiseWatermarks(
 ): Readonly<Record<string, number>> {
   let raised = marks
   for (const [key, watermark] of required) {
-    if (watermark > (raised[key] ?? sectionRowLimit(key))) raised = { ...raised, [key]: watermark }
+    if (watermark > (raised[key] ?? SESSION_WATERMARK_BASE)) raised = { ...raised, [key]: watermark }
   }
   return raised
 }
@@ -401,7 +394,7 @@ function SessionTree({
       }
     }
   }, [groupExpansion, parents, revealGroup, setGroupExpanded])
-  const baselines = new Map(groups.map(group => [group.key, Math.max(sectionRowLimit(group.key), requiredWatermark(
+  const baselines = new Map(groups.map(group => [group.key, Math.max(SESSION_WATERMARK_BASE, requiredWatermark(
     group.sessions,
     current,
     group.key === revealGroup ? revealSessionId : undefined,
@@ -441,7 +434,7 @@ function SessionTree({
       ? ungroupedSessionIds
       : workspaces.find(workspace => workspace.workspaceId === activeDrag.accountKey)?.sessionIds
     if (accountSessionIds === undefined) return
-    const renderedSessions = watermarkRows(group.sessions, sessionWatermarks[group.key] ?? sectionRowLimit(group.key)).rows
+    const renderedSessions = watermarkRows(group.sessions, sessionWatermarks[group.key] ?? SESSION_WATERMARK_BASE).rows
     const nextOrder = sessionDragOrder(accountSessionIds, renderedSessions, activeDrag, over)
     if (nextOrder !== undefined) setSessionOrder(activeDrag.accountKey, nextOrder)
   }
@@ -491,8 +484,8 @@ function SessionTree({
     const workspaceId = group.workspaceId
     const children = childrenByParent.get(group.key) ?? []
     const compatibleDrag = workspaceDrag !== null && parents.get(workspaceDrag.workspaceId) === parents.get(group.key)
-    const watermark = sessionWatermarks[group.key] ?? sectionRowLimit(group.key)
-    const collapsed = watermarkRows(group.sessions, baselines.get(group.key) ?? sectionRowLimit(group.key))
+    const watermark = sessionWatermarks[group.key] ?? SESSION_WATERMARK_BASE
+    const collapsed = watermarkRows(group.sessions, baselines.get(group.key) ?? SESSION_WATERMARK_BASE)
     const visible = watermarkRows(group.sessions, watermark)
     const sessionsExpanded = visible.hiddenCount === 0
     rowKeys.push(`workspace:${group.key}`)
@@ -927,7 +920,7 @@ function CustomGroupTree({
     }),
     [list, groups, rowState, statuses, expandedGroups, ungroupedSessionIds, orderBy],
   )
-  const baselines = new Map(sections.map(section => [section.key, Math.max(sectionRowLimit(section.key), requiredWatermark(
+  const baselines = new Map(sections.map(section => [section.key, Math.max(SESSION_WATERMARK_BASE, requiredWatermark(
     section.sessions,
     current,
     section.key === revealGroup ? revealSessionId : undefined,
@@ -994,8 +987,8 @@ function CustomGroupTree({
   }
   const rowKeys: string[] = sections.length === 0 ? ['empty'] : []
   const rendered = sections.map((section) => {
-    const watermark = sessionWatermarks[section.key] ?? sectionRowLimit(section.key)
-    const collapsed = watermarkRows(section.sessions, baselines.get(section.key) ?? sectionRowLimit(section.key))
+    const watermark = sessionWatermarks[section.key] ?? SESSION_WATERMARK_BASE
+    const collapsed = watermarkRows(section.sessions, baselines.get(section.key) ?? SESSION_WATERMARK_BASE)
     const visible = watermarkRows(section.sessions, watermark)
     const sessionsExpanded = visible.hiddenCount === 0
     rowKeys.push(`workspace:${section.key}`)
