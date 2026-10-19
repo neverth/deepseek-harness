@@ -52,12 +52,23 @@ const EXPAND_SLIDE_MS = 300
 const SEARCH_DEBOUNCE_MS = 250
 /** `session.search` wire bound, measured in JavaScript UTF-16 code units. */
 const SEARCH_QUERY_MAX_CODE_UNITS = 500
-/** Non-blank Session rows visible per Workspace while no Session raises its watermark. */
+/** Non-blank Session rows visible in a group while no Session raises its watermark. */
 const SESSION_WATERMARK_BASE = 5
+/** Row limit of the ungrouped bucket, which collects every Session no group claimed. */
+const SESSION_WATERMARK_UNGROUPED = 10
 /** Highest watermark that attention-bearing Sessions raise automatically; Show more and search reveals may exceed it. */
 const SESSION_WATERMARK_AUTO_MAX = 50
 
-/** Show the blank row plus the first `watermark` non-blank rows, in list order. */
+/** Row limit of one section: the ungrouped bucket shows a longer head than a named group. */
+function sectionRowLimit(key: string): number {
+  return key === UNGROUPED_KEY ? SESSION_WATERMARK_UNGROUPED : SESSION_WATERMARK_BASE
+}
+
+/**
+ * Show the blank row, the first `watermark` non-blank rows, and every unread
+ * completion: a finished Session keeps its reminder row until the user opens it,
+ * so the row limit never hides one.
+ */
 function watermarkRows(sessions: readonly SessionNode[], watermark: number): {
   rows: readonly SessionNode[]
   hiddenCount: number
@@ -66,7 +77,7 @@ function watermarkRows(sessions: readonly SessionNode[], watermark: number): {
   const rows = sessions.filter((session) => {
     if (session.blank) return true
     count += 1
-    return count <= watermark
+    return count <= watermark || session.completed
   })
   return { rows, hiddenCount: sessions.length - rows.length }
 }
@@ -101,7 +112,7 @@ function raiseWatermarks(
 ): Readonly<Record<string, number>> {
   let raised = marks
   for (const [key, watermark] of required) {
-    if (watermark > (raised[key] ?? SESSION_WATERMARK_BASE)) raised = { ...raised, [key]: watermark }
+    if (watermark > (raised[key] ?? sectionRowLimit(key))) raised = { ...raised, [key]: watermark }
   }
   return raised
 }
@@ -390,7 +401,7 @@ function SessionTree({
       }
     }
   }, [groupExpansion, parents, revealGroup, setGroupExpanded])
-  const baselines = new Map(groups.map(group => [group.key, Math.max(SESSION_WATERMARK_BASE, requiredWatermark(
+  const baselines = new Map(groups.map(group => [group.key, Math.max(sectionRowLimit(group.key), requiredWatermark(
     group.sessions,
     current,
     group.key === revealGroup ? revealSessionId : undefined,
@@ -430,7 +441,7 @@ function SessionTree({
       ? ungroupedSessionIds
       : workspaces.find(workspace => workspace.workspaceId === activeDrag.accountKey)?.sessionIds
     if (accountSessionIds === undefined) return
-    const renderedSessions = watermarkRows(group.sessions, sessionWatermarks[group.key] ?? SESSION_WATERMARK_BASE).rows
+    const renderedSessions = watermarkRows(group.sessions, sessionWatermarks[group.key] ?? sectionRowLimit(group.key)).rows
     const nextOrder = sessionDragOrder(accountSessionIds, renderedSessions, activeDrag, over)
     if (nextOrder !== undefined) setSessionOrder(activeDrag.accountKey, nextOrder)
   }
@@ -480,8 +491,8 @@ function SessionTree({
     const workspaceId = group.workspaceId
     const children = childrenByParent.get(group.key) ?? []
     const compatibleDrag = workspaceDrag !== null && parents.get(workspaceDrag.workspaceId) === parents.get(group.key)
-    const watermark = sessionWatermarks[group.key] ?? SESSION_WATERMARK_BASE
-    const collapsed = watermarkRows(group.sessions, baselines.get(group.key) ?? SESSION_WATERMARK_BASE)
+    const watermark = sessionWatermarks[group.key] ?? sectionRowLimit(group.key)
+    const collapsed = watermarkRows(group.sessions, baselines.get(group.key) ?? sectionRowLimit(group.key))
     const visible = watermarkRows(group.sessions, watermark)
     const sessionsExpanded = visible.hiddenCount === 0
     rowKeys.push(`workspace:${group.key}`)
@@ -653,10 +664,9 @@ function SessionTree({
                 dropWatermarks(key => key === group.key)
                 return
               }
-              setStoredWatermarks(marks => ({
-                ...marks,
-                [group.key]: visible.hiddenCount <= SESSION_WATERMARK_BASE ? Infinity : watermark + SESSION_WATERMARK_BASE,
-              }))
+              // One press reveals the whole group: the label states everything
+              // the limit hides, so stepping the watermark would break the promise.
+              setStoredWatermarks(marks => ({ ...marks, [group.key]: Infinity }))
               setWatermarkMotionKey(key => key + 1)
             }}
           >
@@ -828,6 +838,8 @@ type CustomGroupTreeProps = Pick<
   groups: readonly CustomGroupMembership[]
   /** Complete members of the ungrouped bucket in the selected order. */
   ungroupedSessionIds: readonly SessionId[]
+  /** Row order the sections follow; Last-updated ranks them by their newest member. */
+  orderBy: SessionOrderBy
   rowState: SessionRowState
   onLeaveArchivedOnly: () => void
   workspaceReady: boolean
@@ -837,6 +849,8 @@ type CustomGroupTreeProps = Pick<
   setGroupExpanded: (key: string, expanded: boolean) => void
   /** Save the ungrouped bucket's manual order and select Manual. */
   setSessionOrder: (accountKey: string, order: readonly SessionId[]) => void
+  /** Select Manual, keeping the rows the user is looking at in place. */
+  selectManualOrder: () => void
   /** Place one Session in a group, or remove it from every group when `groupId` is absent. */
   moveCustomMember: (sessionId: SessionId, groupId: string | undefined, beforeId?: SessionId) => void
   /** Move one group before another, or to the end when the anchor is absent. */
@@ -871,9 +885,9 @@ function reorderIds(
  * @returns the grouped list body.
  */
 function CustomGroupTree({
-  list, groups, ungroupedSessionIds, rowState, onLeaveArchivedOnly,
+  list, groups, ungroupedSessionIds, orderBy, rowState, onLeaveArchivedOnly,
   useSessionStatus, open, onSessionRenameRequest, usePanelInfo, onAcknowledge,
-  setSessionOrder, moveCustomMember, moveCustomGroup, workspaceReady, animationResetKey,
+  setSessionOrder, selectManualOrder, moveCustomMember, moveCustomGroup, workspaceReady, animationResetKey,
   groupExpansion, setGroupExpanded, onRenameGroup, onDeleteGroup,
   revealSessionId, onSessionRevealed, renderSlot, t,
 }: CustomGroupTreeProps) {
@@ -909,10 +923,11 @@ function CustomGroupTree({
     () => deriveCustomGroups(list, groups, rowState, statuses, {
       expandedGroups,
       ungroupedOrder: ungroupedSessionIds,
+      orderBy,
     }),
-    [list, groups, rowState, statuses, expandedGroups, ungroupedSessionIds],
+    [list, groups, rowState, statuses, expandedGroups, ungroupedSessionIds, orderBy],
   )
-  const baselines = new Map(sections.map(section => [section.key, Math.max(SESSION_WATERMARK_BASE, requiredWatermark(
+  const baselines = new Map(sections.map(section => [section.key, Math.max(sectionRowLimit(section.key), requiredWatermark(
     section.sessions,
     current,
     section.key === revealGroup ? revealSessionId : undefined,
@@ -940,6 +955,9 @@ function CustomGroupTree({
     if (dropCommitted.current) return
     dropCommitted.current = true
     setDrag(null)
+    // A hand-placed row is a manual position, exactly as a row drag is in the
+    // other grouping modes; Last-updated would otherwise ignore where it landed.
+    selectManualOrder()
     const beforeId = over.id === null ? undefined : beforeIdFor(over.key, over.id, over.half)
     if (over.key === UNGROUPED_KEY) {
       // Leaving a group is the same write as entering one; a Session already in
@@ -962,6 +980,8 @@ function CustomGroupTree({
     orderDropCommitted.current = true
     setOrderDrag(null)
     if (over.id === active.groupId) return
+    // Section order is saved, so the drag selects the order it is editing.
+    selectManualOrder()
     if (over.id === UNGROUPED_KEY) {
       moveCustomGroup(active.groupId, undefined)
       return
@@ -974,8 +994,8 @@ function CustomGroupTree({
   }
   const rowKeys: string[] = sections.length === 0 ? ['empty'] : []
   const rendered = sections.map((section) => {
-    const watermark = sessionWatermarks[section.key] ?? SESSION_WATERMARK_BASE
-    const collapsed = watermarkRows(section.sessions, baselines.get(section.key) ?? SESSION_WATERMARK_BASE)
+    const watermark = sessionWatermarks[section.key] ?? sectionRowLimit(section.key)
+    const collapsed = watermarkRows(section.sessions, baselines.get(section.key) ?? sectionRowLimit(section.key))
     const visible = watermarkRows(section.sessions, watermark)
     const sessionsExpanded = visible.hiddenCount === 0
     rowKeys.push(`workspace:${section.key}`)
@@ -1060,9 +1080,9 @@ function CustomGroupTree({
               delete: () => { onDeleteGroup(customGroupId) },
             }}
         />
-        {section.expanded && section.sessions.length > 0 && (
+        {section.expanded && visible.rows.length > 0 && (
           <div role="group">
-            {section.sessions.map((node) => {
+            {visible.rows.map((node) => {
               // A same-section drop stays inside the row's own pinned block; a
               // cross-section drop is a move and any row accepts it.
               const accepts = drag !== null && (drag.from !== section.key || drag.pinned === node.pinned)
@@ -1124,10 +1144,9 @@ function CustomGroupTree({
                 dropWatermarks(section.key)
                 return
               }
-              setStoredWatermarks(marks => ({
-                ...marks,
-                [section.key]: visible.hiddenCount <= SESSION_WATERMARK_BASE ? Infinity : watermark + SESSION_WATERMARK_BASE,
-              }))
+              // One press reveals the whole group: the label states everything
+              // the limit hides, so stepping the watermark would break the promise.
+              setStoredWatermarks(marks => ({ ...marks, [section.key]: Infinity }))
               setWatermarkMotionKey(seq => seq + 1)
             }}
           >
@@ -1400,15 +1419,20 @@ export function WorkspaceBrowser({
     // Stored membership survives as plain strings; the Session list is the
     // authority on which of them are real, exactly as saved orders are read.
     const known = new Map(flatMemberIds.map(id => [id as string, id]))
-    return customGroups.map(group => ({
-      id: group.id,
-      name: group.name,
-      sessionIds: (customMembers[group.id] ?? []).flatMap((id) => {
+    return customGroups.map((group) => {
+      const members = (customMembers[group.id] ?? []).flatMap((id) => {
         const branded = known.get(id)
         return branded === undefined ? [] : [branded]
-      }),
-    }))
-  }, [customGroups, customMembers, flatMemberIds])
+      })
+      return {
+        id: group.id,
+        name: group.name,
+        // Last-updated orders the rows inside a group too, so a group reads
+        // newest-first rather than in the order its members were dragged in.
+        sessionIds: orderBy === 'updated' ? orderByRecency(members, list.byId) : members,
+      }
+    })
+  }, [customGroups, customMembers, flatMemberIds, list.byId, orderBy])
   // The custom mode's bucket: every Session no hand-made group names.
   const customMemberIds = useMemo(
     () => new Set(customMemberships.flatMap(group => group.sessionIds)),
@@ -1889,6 +1913,7 @@ export function WorkspaceBrowser({
                 list={list}
                 groups={customMemberships}
                 ungroupedSessionIds={orderedCustomUngroupedSessionIds}
+                orderBy={orderBy}
                 rowState={rowState}
                 onLeaveArchivedOnly={leaveArchivedOnly}
                 workspaceReady={workspaceReady}
@@ -1901,6 +1926,12 @@ export function WorkspaceBrowser({
                 groupExpansion={groupExpansion}
                 setGroupExpanded={actions.setGroupExpanded}
                 setSessionOrder={saveSessionOrder}
+                selectManualOrder={() => {
+                  actions.syncCustomMemberOrders(Object.fromEntries(
+                    customMemberships.map(group => [group.id, group.sessionIds]),
+                  ))
+                  actions.setOrderBy('manual', activeSessionOrders)
+                }}
                 moveCustomMember={actions.moveCustomMember}
                 moveCustomGroup={actions.moveCustomGroup}
                 onRenameGroup={(groupId, currentName) => {

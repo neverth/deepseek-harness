@@ -141,6 +141,11 @@ export interface TreeView {
   expandedGroups: readonly string[]
   /** Browser-local order for Sessions without a backing Workspace account. */
   ungroupedOrder?: readonly string[]
+  /**
+   * Row order the sections follow: 'updated' ranks hand-made sections by their
+   * newest Session, anything else keeps the caller's section order.
+   */
+  orderBy?: SessionOrderBy
 }
 
 interface Group {
@@ -324,6 +329,20 @@ function sectionMembers(
  */
 function sessionTitle(session: SessionSummary): string {
   return session.blank ? '' : (session.title?.trim() ?? '')
+}
+
+/**
+ * Rank one hand-made section in the Last-updated order: its newest non-blank
+ * member. The provisional blank row states no recency, and a section without
+ * any ranked member leads so a freshly made group stays where its creation put it.
+ */
+function latestMemberTime(members: readonly SessionSummary[]): number {
+  let latest: number | undefined
+  for (const member of members) {
+    if (member.blank) continue
+    if (latest === undefined || member.updatedAt > latest) latest = member.updatedAt
+  }
+  return latest ?? Number.POSITIVE_INFINITY
 }
 
 /** Build one group without projecting session lineage into presentation. */
@@ -524,8 +543,10 @@ export function deriveGroups(
  *
  * Membership is the browser's own saved list, so a Session the groups do not
  * name falls to the bucket whether or not a Workspace knows it. Section order
- * is the caller's group order; member order is the saved member order, with
- * pinned rows leading. Everything else matches {@link deriveGroups}.
+ * is the caller's group order under Manual, and under Last-updated it is the
+ * sections' newest ranked member with the ungrouped bucket ranked among them;
+ * member order is the saved member order, with pinned rows leading. Everything
+ * else matches {@link deriveGroups}.
  * @param list - sessions list snapshot.
  * @param groups - hand-made groups with their saved membership, in display order.
  * @param rowState - registry-global pin and archive sets plus the archived filter.
@@ -547,7 +568,7 @@ export function deriveCustomGroups(
   const currentGroup = current === undefined
     ? undefined
     : groups.find(group => group.sessionIds.includes(current))?.id ?? UNGROUPED_KEY
-  const sections: GroupNode[] = []
+  const sections: { node: GroupNode; latest: number }[] = []
   // Membership is accounted for before visibility: a Session the archived
   // filter hides still belongs to its group rather than to the bucket.
   const accounted = new Set<SessionId>()
@@ -566,23 +587,26 @@ export function deriveCustomGroups(
     customGroupId: string | undefined,
     label: string,
     members: readonly SessionSummary[],
-  ): GroupNode => {
+  ): void => {
     const isExpanded = expandedGroups.has(key)
-    return {
-      key,
-      workspaceId: undefined,
-      ...(customGroupId === undefined ? {} : { customGroupId }),
-      cwd: undefined,
-      createdAt: undefined,
-      label,
-      sessionCount: members.length,
-      expanded: isExpanded,
-      containsCurrent: key === currentGroup,
-      sessions: isExpanded
-        ? sectionMembers(members, pinned, archived)
-          .map(session => sessionNode(session, list, statuses, pinned, archived))
-        : [],
-    }
+    sections.push({
+      node: {
+        key,
+        workspaceId: undefined,
+        ...(customGroupId === undefined ? {} : { customGroupId }),
+        cwd: undefined,
+        createdAt: undefined,
+        label,
+        sessionCount: members.length,
+        expanded: isExpanded,
+        containsCurrent: key === currentGroup,
+        sessions: isExpanded
+          ? sectionMembers(members, pinned, archived)
+            .map(session => sessionNode(session, list, statuses, pinned, archived))
+          : [],
+      },
+      latest: latestMemberTime(members),
+    })
   }
   for (const group of groups) {
     const members = membersOf(group.sessionIds)
@@ -590,7 +614,7 @@ export function deriveCustomGroups(
     // group without archived Sessions contributes no section — the same rule
     // the Workspace grouping applies to a Workspace.
     if (rowState.archivedFilter === 'only' && members.length === 0) continue
-    sections.push(section(group.id, group.id, group.name, members))
+    section(group.id, group.id, group.name, members)
   }
   const stray = membersOf(list.ids)
   if (stray.length > 0) {
@@ -598,12 +622,16 @@ export function deriveCustomGroups(
       ? orderByRecency(stray.map(summary => summary.id), list.byId)
       : reconcileManualOrder(stray.map(summary => summary.id), view.ungroupedOrder, list.byId, rowState)
     const byId = new Map(stray.map(summary => [summary.id, summary]))
-    sections.push(section(UNGROUPED_KEY, undefined, '', ordered.flatMap((id) => {
+    section(UNGROUPED_KEY, undefined, '', ordered.flatMap((id) => {
       const summary = byId.get(id)
       return summary === undefined ? [] : [summary]
-    })))
+    }))
   }
-  return sections
+  // Last-updated ranks the sections themselves, the ungrouped bucket among
+  // them; the saved hand-made order stays the tie-break because the sort is stable.
+  return view.orderBy === 'updated'
+    ? [...sections].sort((a, b) => b.latest - a.latest).map(entry => entry.node)
+    : sections.map(entry => entry.node)
 }
 
 /**

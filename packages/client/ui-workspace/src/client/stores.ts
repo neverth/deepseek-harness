@@ -73,6 +73,14 @@ type WorkspaceViewActions = {
     draft: WorkspaceViewState,
     orders: Readonly<Record<string, readonly string[]>>,
   ) => void
+  /**
+   * Record the member order currently rendered for each hand-made group, so a
+   * drag that selects Manual keeps the rows where the user was looking at them.
+   */
+  syncCustomMemberOrders: (
+    draft: WorkspaceViewState,
+    orders: Readonly<Record<string, readonly string[]>>,
+  ) => void
   setSessionOrder: (
     draft: WorkspaceViewState,
     accountKey: string,
@@ -157,6 +165,16 @@ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState
       syncSessionOrders: (d, orders) => {
         if (d.orderBy !== 'manual') return
         Object.assign(d.sessionOrderByAccount, copySessionOrders(orders))
+      },
+      syncCustomMemberOrders: (d, orders) => {
+        for (const [groupId, order] of Object.entries(orders)) {
+          const members = d.customMembers[groupId]
+          if (members === undefined) continue
+          const ranked = new Set(order)
+          // Members the rendering does not know keep their relative order behind
+          // the ranked ones rather than leaving the stored membership.
+          d.customMembers[groupId] = [...order, ...members.filter(id => !ranked.has(id))]
+        }
       },
       setSessionOrder: (d, accountKey, order, initialOrders) => {
         if (d.orderBy === 'updated') d.sessionOrderByAccount = copySessionOrders(initialOrders)

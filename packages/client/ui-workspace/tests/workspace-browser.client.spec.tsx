@@ -874,15 +874,16 @@ describe('WorkspaceBrowser', () => {
       ])),
     })
     expect(screen.queryByText('session-6')).toBeNull()
-    for (const id of ['session-53', 'session-55', 'session-56', 'session-57']) expect(screen.queryByText(id)).toBeNull()
+    for (const id of ['session-53', 'session-55', 'session-57']) expect(screen.queryByText(id)).toBeNull()
+    // An unread completion keeps its row past the automatic maximum.
+    expect(screen.getByText('session-56')).toBeTruthy()
     rerender(b, { useSessionStatus: running('session-50', 'session-55') })
     expect(screen.getByText('session-50')).toBeTruthy()
     expect(screen.queryByText('session-51')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '展开其余 10 个会话' }))
-    expect(screen.getByText('session-55')).toBeTruthy()
-    expect(screen.queryByText('session-56')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '展开其余 5 个会话' }))
-    expect(screen.getByText('session-60')).toBeTruthy()
+    for (const id of ['session-55', 'session-56', 'session-57', 'session-60']) {
+      expect(screen.getByText(id)).toBeTruthy()
+    }
   })
 
   it('covers the current session and a parent with a running child', () => {
@@ -909,7 +910,7 @@ describe('WorkspaceBrowser', () => {
     expect(screen.getByRole('button', { name: '展开其余 1 个会话' })).toBeTruthy()
   })
 
-  it.each([false, true])('expands 17 ordinary sessions five at a time and resets after the final partial batch (blank: %s)', (withBlank) => {
+  it.each([false, true])('reveals every row on one Show more press and folds back to the limit (blank: %s)', (withBlank) => {
     const ordinary = Array.from({ length: 17 }, (_, index) => summary(`session-${index + 1}`, 17 - index))
     const blank = summary('blank', 18, { blank: true })
     const items = withBlank ? [blank, ...ordinary] : ordinary
@@ -926,33 +927,19 @@ describe('WorkspaceBrowser', () => {
       expect(screen.queryByText('新会话') !== null).toBe(withBlank)
     }
     expectVisible(5)
-    const labels: string[] = []
-    for (const [remaining, visible] of [[12, 10], [7, 15], [2, 17]] as const) {
-      const overflow = screen.getByRole('button', { name: `展开其余 ${remaining} 个会话` })
-      labels.push(overflow.textContent ?? '')
-      expect(screen.queryByRole('button', { name: '收起' })).toBeNull()
-      fireEvent.click(overflow)
-      expectVisible(visible)
-    }
+    const overflow = screen.getByRole('button', { name: '展开其余 12 个会话' })
+    expect(overflow.textContent).toBe('展开其余 12 个会话')
+    expect(screen.queryByRole('button', { name: '收起' })).toBeNull()
+    fireEvent.click(overflow)
+    // The label states what the limit hides, and one press shows all of it.
+    expectVisible(17)
     expect(screen.queryByRole('button', { name: /展开其余/ })).toBeNull()
-    const collapse = screen.getByRole('button', { name: '收起' })
-    labels.push(collapse.textContent ?? '')
-    expect(labels).toMatchInlineSnapshot(`
-      [
-        "展开其余 12 个会话",
-        "展开其余 7 个会话",
-        "展开其余 2 个会话",
-        "收起",
-      ]
-    `)
-    fireEvent.click(collapse)
+    fireEvent.click(screen.getByRole('button', { name: '收起' }))
     expectVisible(5)
-    fireEvent.click(screen.getByRole('button', { name: '展开其余 12 个会话' }))
-    expectVisible(10)
-    expect(screen.getByRole('button', { name: '展开其余 7 个会话' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '展开其余 12 个会话' })).toBeTruthy()
   })
 
-  it('keeps each Workspace batch limit independent when another Workspace expands or collapses', () => {
+  it('keeps each Workspace row limit independent when another Workspace expands or collapses', () => {
     const alpha = Array.from({ length: 17 }, (_, index) => summary(`alpha-${index + 1}`, 17 - index))
     const beta = Array.from({ length: 11 }, (_, index) => summary(`beta-${index + 1}`, 11 - index))
     mount({
@@ -965,18 +952,15 @@ describe('WorkspaceBrowser', () => {
     fireEvent.click(screen.getByText('alpha'))
     fireEvent.click(screen.getByText('beta'))
     fireEvent.click(screen.getByRole('button', { name: '展开其余 12 个会话' }))
-    expect(screen.getByText('alpha-10')).toBeTruthy()
-    expect(screen.queryByText('alpha-11')).toBeNull()
+    expect(screen.getByText('alpha-17')).toBeTruthy()
     expect(screen.queryByText('beta-6')).toBeNull()
+    expect(screen.getByRole('button', { name: '展开其余 6 个会话' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '展开其余 6 个会话' }))
-    expect(screen.getByText('beta-10')).toBeTruthy()
-    expect(screen.queryByText('beta-11')).toBeNull()
+    expect(screen.getByText('beta-11')).toBeTruthy()
     fireEvent.click(screen.getByText('alpha'))
     fireEvent.click(screen.getByText('alpha'))
     expect(screen.queryByText('alpha-6')).toBeNull()
     expect(screen.getByRole('button', { name: '展开其余 12 个会话' })).toBeTruthy()
-    expect(screen.getByText('beta-10')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '展开其余 1 个会话' }))
     expect(screen.getByText('beta-11')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '收起' }))
     expect(screen.queryByText('beta-6')).toBeNull()
@@ -1040,7 +1024,7 @@ describe('WorkspaceBrowser', () => {
     expect(screen.queryByText('session-6')).toBeNull()
   })
 
-  it('reorders a newly exposed batch row while preserving the blank and hidden tail', () => {
+  it('reorders a row the expansion revealed while keeping the blank pinned', () => {
     const ordinary = Array.from({ length: 12 }, (_, index) => summary(`session-${index + 1}`, 12 - index))
     const blank = summary('blank', 13, { blank: true })
     const b = mount({
@@ -1063,11 +1047,9 @@ describe('WorkspaceBrowser', () => {
     ])
     expect(screen.getAllByRole('treeitem').slice(1).map(row => row.querySelector('[class*="title"]')?.textContent)).toEqual([
       '新会话', 'session-1', 'session-2', 'session-3', 'session-4', 'session-5',
-      'session-10', 'session-6', 'session-7', 'session-8', 'session-9',
+      'session-10', 'session-6', 'session-7', 'session-8', 'session-9', 'session-11', 'session-12',
     ])
-    expect(screen.queryByText('session-11')).toBeNull()
-    expect(screen.queryByText('session-12')).toBeNull()
-    expect(screen.getByRole('button', { name: '展开其余 2 个会话' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '收起' })).toBeTruthy()
   })
 
   it('discards manual positions on recency selection and switches to Manual on drag', async () => {
