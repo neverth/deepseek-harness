@@ -181,7 +181,7 @@ export function apply(ctx: Context, config: Config): void {
     return admitted ? undefined : new Response(body, { status, headers })
   }
   ctx.effect(() => ctx.webServer.registerFallback({
-    resource: (request, peer) => {
+    resource: async (request, peer) => {
       const requestUrl = new URL(request.url)
       const pathname = decodeURIComponent(requestUrl.pathname)
       // The secret-path knock is an HTTP-only reachability gate. In-process

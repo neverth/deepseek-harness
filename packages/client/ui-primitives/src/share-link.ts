@@ -19,6 +19,7 @@ const SHARE_PARAM = 'share'
  * @returns the raw session id string, or undefined.
  */
 export function shareSessionId(): string | undefined {
+  if (typeof window === 'undefined') return undefined
   const fromQuery = new URL(window.location.href).searchParams.get(SHARE_PARAM)
   if (fromQuery !== null && fromQuery !== '') return fromQuery
   const hash = window.location.hash
