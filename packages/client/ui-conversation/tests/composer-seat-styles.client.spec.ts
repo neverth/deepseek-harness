@@ -24,10 +24,14 @@ describe('docked composer seat styles', () => {
   it('keeps the seat at one stacking rank in every state', () => {
     expect(seat).toMatch(/position:\s*sticky;/)
     expect(seat).toMatch(/z-index:\s*9;/)
-    // No other rule ranks the seat, so opening a menu inside it changes nothing.
+    // Each state ranks the seat exactly once: the docked seat at 9, and the mobile
+    // bottom sheet at 12 so it floats over the transcript while the toggle pill
+    // rides above it. No state re-ranks the seat when a menu inside it opens.
     const ranked = [...conversationCss.matchAll(/([^{}]*\.composerSeat[^{}]*)\{([^}]*)\}/g)]
       .filter(([, , body]) => body !== undefined && /z-index/.test(body))
-    expect(ranked).toHaveLength(1)
+    expect(ranked).toHaveLength(2)
+    expect(ranked[1]![1]).toContain('[data-mobile]')
+    expect(ranked[1]![2]).toMatch(/z-index:\s*12;/)
   })
 
   it('rests the seat at the floor without depending on a View to fill the column', () => {

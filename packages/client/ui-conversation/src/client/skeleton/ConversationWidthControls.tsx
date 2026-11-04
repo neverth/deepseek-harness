@@ -140,7 +140,7 @@ export function ConversationWidthControls({ container, phase }: ConversationWidt
   const publishWidths = useCallback((container: HTMLDivElement): void => {
     const target = container.parentElement ?? container
     const column = container.offsetWidth
-    setMobile(column <= MOBILE_MAX)
+    setMobile(column > 0 && column <= MOBILE_MAX)
     target.style.setProperty('--dsh-conversation-column-width', `${column}px`)
     const preference = readWidthPreference()
     if (preference === null) target.style.removeProperty('--dsh-chat-user-width')

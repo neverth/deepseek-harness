@@ -36,4 +36,26 @@ describe('conversation header geometry', () => {
     expect(css.match(/\.viewTabs\s*\{([^}]*)\}/)?.[1]).toContain('gap: 32px')
     expect(css.match(/\.tabs\s*\{([^}]*)\}/)?.[1]).toContain('gap: 16px 20px')
   })
+
+  it('hides the view tabs on phones and tablets', () => {
+    const compact = css.slice(css.indexOf('@media (max-width: 1024px)'), css.indexOf('@media (max-width: 767px)'))
+    expect(compact).toContain('.tabs')
+    expect(compact).toContain('display: none')
+    // Without the tab row the header is a single line again.
+    expect(compact).toContain('min-height: 0')
+  })
+
+  it('keeps the title on one line and scrolls the chips in a narrow header row', () => {
+    const narrow = css.slice(css.indexOf('@container (max-width: 900px)'), css.indexOf('@container (max-width: 480px)'))
+    // The title keeps a full line: it ellipsizes instead of wrapping into a column.
+    expect(narrow).toContain('white-space: nowrap')
+    expect(narrow).toContain('text-overflow: ellipsis')
+    // The action chips take the second line and scroll rather than squeeze:
+    // the slot wrapper is `display: contents`, so its children are the flex items.
+    expect(narrow).toContain('overflow-x: auto')
+    expect(narrow).toContain('.headerActions > * > *')
+    expect(narrow).toMatch(/\.headerActions > \* > \* \{\s*flex: none;/)
+    // Phones drop the chips; the facts stay reachable from the sidebars and menus.
+    expect(css.slice(css.indexOf('@container (max-width: 480px)'))).toContain('display: none')
+  })
 })

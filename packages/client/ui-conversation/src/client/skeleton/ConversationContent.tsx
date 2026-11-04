@@ -49,23 +49,21 @@ export function ConversationContent(props: ConversationContentProps) {
   // Mobile regime: the composer leaves the flow and opens from a floating
   // trigger, so a narrow column shows the transcript full-height. Only the
   // main column: an embedded occurrence keeps its inline composer.
+  // The floating trigger and the sheet's floating regime read the same value:
+  // the sheet keys off this attribute, so neither can disagree about `mobile`.
   const [mobile, setMobile] = useState(false)
   const [composerOpen, setComposerOpen] = useState(false)
   const mainColumn = props.variant !== 'embedded'
   useLayoutEffect(() => {
     if (body === null || !mainColumn) return
     const measure = () => {
-      const next = body.offsetWidth <= MOBILE_MAX
+      const next = body.offsetWidth > 0 && body.offsetWidth <= MOBILE_MAX
       setMobile(next)
-      body.parentElement?.toggleAttribute('data-mobile', next)
     }
     const observer = new ResizeObserver(measure)
     observer.observe(body)
     measure()
-    return () => {
-      observer.disconnect()
-      body.parentElement?.removeAttribute('data-mobile')
-    }
+    return () => { observer.disconnect() }
   }, [body, mainColumn])
   // Escape is the second exit from the open sheet, beside its collapse button.
   useEffect(() => {
@@ -244,6 +242,7 @@ export function ConversationContent(props: ConversationContentProps) {
       data-conversation-session={sessionId}
       data-conversation-region="chat"
       data-content-phase={phase}
+      data-mobile={mobile || undefined}
     >
       {/* The frame wraps the scroll body in every phase, so leaving the home keeps the composer mounted. */}
       {renderSlot('conversation.hero.frame', { hero: hero && props.variant !== 'embedded' }, {

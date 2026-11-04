@@ -1011,7 +1011,9 @@ describe('ChatView', () => {
       expect(previous.hasAttribute('hidden')).toBe(mode !== 'verbose')
       if (mode !== 'verbose') expect(control.getAttribute('aria-expanded')).toBe('false')
       act(() => { h.startNext() })
-      expect(view.getAllByText('next question')).toHaveLength(1)
+      // The rail echoes the prompt too, so count the durable user message inside the transcript only.
+      const flow = view.container.querySelector<HTMLElement>('[data-chat-flow]')!
+      expect(within(flow).getAllByText('next question')).toHaveLength(1)
       expect(view.container.querySelector('[data-submission-echo]')).toBeNull()
       expect(view.container.querySelector('[data-chat-group-key][data-chat-turn="2"]')).toBe(previous)
       expect(previous.hasAttribute('hidden')).toBe(mode !== 'verbose')
