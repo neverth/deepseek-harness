@@ -175,7 +175,7 @@ describe('native row drag previews', () => {
       }} onToggle={vi.fn()} onCreate={vi.fn()} drag={drag} t={t} />
       : <SessionNodeItem node={{
         id: sid('session'), title: 'Draggable row', blank: false, running: false,
-        runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
+        runningSubagentCount: 0, completed: false, awaitingAck: false, updatedAt: 0, pinned: false, archived: false,
       }} currentId={undefined} now={0} onOpen={vi.fn()} drag={drag} t={t} />)
     const row = screen.getByRole('treeitem')
     stubRect(row)
@@ -238,7 +238,7 @@ describe('native row drag previews', () => {
     const image = start()
     rerender(<SessionNodeItem node={{
       id: sid('session'), title: 'Draggable row', blank: false, running: false,
-      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: true,
+      runningSubagentCount: 0, completed: false, awaitingAck: false, updatedAt: 0, pinned: false, archived: true,
     }} currentId={undefined} now={0} onOpen={vi.fn()} drag={drag} t={t} />)
     expect(row.getAttribute('draggable')).toBe('false')
     fireEvent.dragEnd(row)
@@ -270,14 +270,14 @@ describe('workspace browser rows', () => {
     const view = render(<SessionNodeItem node={idle} currentId={undefined} now={0} onOpen={vi.fn()} t={t} />)
     // The cell is the row's first element and holds nothing while the row is
     // idle without an occupant; the title follows it.
-    const cell = screen.getByText('Flat Session').previousElementSibling
+    const cell = screen.getByText('Flat Session').parentElement?.previousElementSibling
     expect(cell?.className).toMatch(/slot/)
     expect(cell?.children).toHaveLength(0)
 
     view.rerender(<SessionNodeItem node={{ ...idle, running: true }} currentId={undefined} now={0}
       onOpen={vi.fn()} t={t} />)
     // A row that gains a state dot keeps that dot in the same cell.
-    expect(screen.getByText('Flat Session').previousElementSibling?.querySelector('[data-state="ongoing"]')).toBeTruthy()
+    expect(screen.getByText('Flat Session').parentElement?.previousElementSibling?.querySelector('[data-state="ongoing"]')).toBeTruthy()
   })
 
   it('renders a selected content-search row and opens only its session', () => {
@@ -308,18 +308,18 @@ describe('workspace browser rows', () => {
   it('withholds the search-result restore control while the Session access excludes unarchiving', () => {
     const result: SearchResultNode = {
       id: sid('archived-result'), title: 'Archived', workspace: 'Project',
-      running: false, runningSubagentCount: 0, completed: false, archived: true,
+      running: false, runningSubagentCount: 0, completed: false, awaitingAck: false, archived: true,
     }
     const denied = vi.fn(() => false)
     const view = render(<SearchResultItem result={result} currentId={undefined}
-      onOpen={vi.fn()} onUnarchive={vi.fn()} useSessionAccess={denied} t={t} />)
+      onOpen={vi.fn()} onUnarchive={vi.fn()} onAcknowledge={vi.fn()} useSessionAccess={denied} t={t} />)
     expect(denied).toHaveBeenCalledWith(result.id, 'workspace/unarchiveSession')
     expect(view.queryByRole('button', { name: zh['menu.unarchiveSession'] })).toBeNull()
     cleanup()
     // The allowed answer renders the same verb.
     const allowed = vi.fn(() => true)
     const restored = render(<SearchResultItem result={result} currentId={undefined}
-      onOpen={vi.fn()} onUnarchive={vi.fn()} useSessionAccess={allowed} t={t} />)
+      onOpen={vi.fn()} onUnarchive={vi.fn()} onAcknowledge={vi.fn()} useSessionAccess={allowed} t={t} />)
     expect(restored.getByRole('button', { name: zh['menu.unarchiveSession'] })).toBeTruthy()
   })
 
@@ -581,7 +581,9 @@ describe('workspace browser rows', () => {
     done.unmount()
     // Running wins the slot: the animated ongoing dot, no done dot.
     const running = renderRow({ completed: true, running: true })
-    expect(running.container.querySelector('[data-state="ongoing"]')).not.toBeNull()
+    const runningMarker = running.container.querySelector('[data-state="ongoing"]')
+    expect(runningMarker?.getAttribute('width')).toBe('16')
+    expect(runningMarker?.getAttribute('height')).toBe('16')
     expect(running.container.querySelector('[data-state="done"]')).toBeNull()
     running.unmount()
     // Descendant activity also wins until the last running descendant stops.
@@ -728,7 +730,7 @@ describe('workspace browser rows', () => {
   it('session row drags and renames from its title only while its access snapshot allows each', () => {
     const node: SessionNode = {
       id: sid('s1'), title: 'One', blank: false, running: false,
-      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
+      runningSubagentCount: 0, completed: false, awaitingAck: false, updatedAt: 0, pinned: false, archived: false,
     }
     const drag: RowDragProps = {
       active: false, marker: null, start: vi.fn(), end: vi.fn(), hover: vi.fn(), drop: vi.fn(),
@@ -929,7 +931,7 @@ describe('workspace browser rows', () => {
   describe('Session hover-card working directory', () => {
     const located: SessionNode = {
       id: sid('s-cwd'), title: 'Located', blank: false, running: false,
-      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
+      runningSubagentCount: 0, completed: false, awaitingAck: false, updatedAt: 0, pinned: false, archived: false,
       cwd: '/home/u/project',
     }
     function hoverCard(node: SessionNode): void {
@@ -1133,9 +1135,9 @@ describe('workspace browser rows', () => {
       expect(row.querySelector('[data-state="warning"]')).toBeTruthy()
       expect(row.querySelector('[data-state="ongoing"]')).toBeNull()
       expect(row.textContent).toContain(label)
-      expect(title.nextElementSibling?.textContent).toBe(compactLabel)
+      expect(title.parentElement?.nextElementSibling?.textContent).toBe(compactLabel)
       expect(rowCss.timestamp).toBeTypeOf('string')
-      expect(title.nextElementSibling?.firstElementChild?.classList.contains(rowCss.timestamp!)).toBe(false)
+      expect(title.parentElement?.nextElementSibling?.firstElementChild?.classList.contains(rowCss.timestamp!)).toBe(false)
       expect(row.querySelector('[class*="time"]')?.getAttribute('aria-hidden')).toBe('true')
       expect(row.textContent).not.toContain('刚刚')
 
@@ -1164,7 +1166,7 @@ describe('workspace browser rows', () => {
     }
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()} t={tEn} />)
     const row = screen.getByRole('treeitem')
-    expect(screen.getByText('Needs input').nextElementSibling?.textContent).toBe(compactLabel)
+    expect(screen.getByText('Needs input').parentElement?.nextElementSibling?.textContent).toBe(compactLabel)
     expect(screen.getByText(compactLabel).getAttribute('aria-hidden')).toBe('true')
     expect(row.textContent).not.toContain('now')
   })
@@ -1290,7 +1292,8 @@ describe('workspace browser rows', () => {
     const drag = dragProps({ active: true, marker: 'before' })
     render(<SessionNodeItem node={{
       id: sid('not-draggable'), title: 'Not draggable', blank: state === 'blank', running: false,
-      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: state === 'archived',
+      runningSubagentCount: 0, completed: false, awaitingAck: false,
+      updatedAt: 0, pinned: false, archived: state === 'archived',
     }} currentId={undefined} now={0} onOpen={vi.fn()} drag={drag} t={t} />)
     const row = screen.getByRole('treeitem')
     expect(row.getAttribute('draggable')).toBe('false')
@@ -1341,7 +1344,7 @@ describe('workspace browser rows', () => {
     const onOpen = vi.fn()
     const node: SessionNode = {
       id: sid('s1'), title: 'Named', blank: false, running: false,
-      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
+      runningSubagentCount: 0, completed: false, awaitingAck: false, updatedAt: 0, pinned: false, archived: false,
     }
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen}
       onRenameRequest={onRenameRequest} t={t} />)

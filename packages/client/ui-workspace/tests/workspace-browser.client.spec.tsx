@@ -756,6 +756,7 @@ describe('WorkspaceBrowser', () => {
     })
     fireEvent.dragStart(one, { dataTransfer: dragData() })
     fireDrag(three, 'drop', 180)
+    fireEvent.dragEnd(one)
     expect(b.store.getSnapshot().sessionOrderByAccount[FLAT_SESSION_ORDER_KEY])
       .toEqual(['two', 'three', 'one'])
 
@@ -767,11 +768,26 @@ describe('WorkspaceBrowser', () => {
       ])
       expect(b.store.getSnapshot().sessionOrderByAccount).toEqual({})
     })
+    const recentOne = screen.getByText('one').closest('[role="treeitem"]') as HTMLElement
+    const recentThree = screen.getByText('three').closest('[role="treeitem"]') as HTMLElement
+    expect(recentOne.draggable).toBe(false)
+    expect(recentThree.draggable).toBe(false)
+    fireEvent.dragStart(recentOne, { dataTransfer: dragData() })
+    fireDrag(recentThree, 'drop', 180)
+    expect(b.store.getSnapshot()).toMatchObject({ orderBy: 'updated', sessionOrderByAccount: {} })
 
     fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '手动排序' }))
-    fireEvent.dragStart(one, { dataTransfer: dragData() })
-    fireDrag(three, 'drop', 180)
+    const manualOne = screen.getByText('one').closest('[role="treeitem"]') as HTMLElement
+    const manualThree = screen.getByText('three').closest('[role="treeitem"]') as HTMLElement
+    expect(manualOne.draggable).toBe(true)
+    expect(manualThree.draggable).toBe(true)
+    manualThree.getBoundingClientRect = () => ({
+      top: 150, bottom: 184, left: 0, right: 200, width: 200, height: 34,
+      x: 0, y: 150, toJSON: () => ({}),
+    })
+    fireEvent.dragStart(manualOne, { dataTransfer: dragData() })
+    fireDrag(manualThree, 'drop', 180)
     b.view.unmount()
 
     const restored = mount({ useSessions: hook(sessions), useWorkspaces: hook(workspaces) })
@@ -900,10 +916,12 @@ describe('WorkspaceBrowser', () => {
     expectVisible(7)
     rerender(b, { useSessionStatus: status('session-8', { completionUnread: true }) })
     expectVisible(8)
-    fireEvent.click(screen.getByRole('button', { name: '展开其余 4 个会话' }))
+    rerender(b, { useSessionStatus: status('session-10', { completionPendingAck: true }) })
+    expectVisible(10)
+    fireEvent.click(screen.getByRole('button', { name: '展开其余 2 个会话' }))
     expectVisible(12)
     fireEvent.click(screen.getByRole('button', { name: '收起' }))
-    expectVisible(8)
+    expectVisible(10)
   })
 
   it('keeps the raised row count, not the Session, when a new Session pushes it down', () => {
@@ -952,12 +970,15 @@ describe('WorkspaceBrowser', () => {
           running: false, completionUnread: false, completionPendingAck: false,
           pendingInteraction: { key: 'question:1', kind: 'question', sessionId: sid('session-57') } as SessionPendingInteraction,
         }],
+        [sid('session-58'), {
+          running: false, pendingInteraction: undefined, completionUnread: false, completionPendingAck: true,
+        }],
       ])),
     })
     expect(screen.queryByText('session-6')).toBeNull()
     for (const id of ['session-53', 'session-55', 'session-57']) expect(screen.queryByText(id)).toBeNull()
-    // An unread completion keeps its row past the automatic maximum.
-    expect(screen.getByText('session-56')).toBeTruthy()
+    // Completion reminders stay visible past the automatic maximum in either lifecycle state.
+    for (const id of ['session-56', 'session-58']) expect(screen.getByText(id)).toBeTruthy()
     rerender(b, { useSessionStatus: running('session-50', 'session-55') })
     expect(screen.getByText('session-50')).toBeTruthy()
     expect(screen.queryByText('session-51')).toBeNull()
@@ -1099,7 +1120,7 @@ describe('WorkspaceBrowser', () => {
     const session3 = screen.getByText('session-3').closest('[role="treeitem"]') as HTMLElement
     fireEvent.dragStart(session3, { dataTransfer: dragData() })
     fireDrag(blankRow, 'drop', 205)
-    fireEvent.dragEnd(session5)
+    fireEvent.dragEnd(session3)
     expect(b.store.getSnapshot().sessionOrderByAccount.alpha)
       .toEqual(['blank', 'session-3', 'session-1', 'session-2', 'session-4', 'session-5', 'session-6'])
     expect(screen.getByText('session-3')).toBeTruthy()
@@ -1134,7 +1155,7 @@ describe('WorkspaceBrowser', () => {
     expect(screen.getByRole('button', { name: '收起' })).toBeTruthy()
   })
 
-  it('discards manual positions on recency selection and switches to Manual on drag', async () => {
+  it('disables grouped Session drag under Last updated and reorders after Manual selection', async () => {
     const initial = sessionState([summary('one', 3), summary('two', 2)])
     const b = mount({
       useSessions: hook(initial),
@@ -1150,19 +1171,23 @@ describe('WorkspaceBrowser', () => {
     })
 
     const [one, two] = screen.getAllByRole('treeitem').slice(1) as [HTMLElement, HTMLElement]
+    expect(one.draggable).toBe(false)
+    expect(two.draggable).toBe(false)
     two.getBoundingClientRect = () => ({
       top: 150, bottom: 184, left: 0, right: 200, width: 200, height: 34, x: 0, y: 150, toJSON: () => ({}),
     })
     fireEvent.dragStart(one, { dataTransfer: dragData() })
-    fireDrag(one, 'drop', 180)
-    expect(b.store.getSnapshot().orderBy).toBe('updated')
-    fireEvent.dragStart(one, { dataTransfer: dragData() })
     fireDrag(two, 'drop', 180)
-    expect(b.store.getSnapshot().orderBy).toBe('manual')
-    expect(b.store.getSnapshot().sessionOrderByAccount.alpha).toEqual(['two', 'one'])
+    expect(b.store.getSnapshot().orderBy).toBe('updated')
+    expect(b.store.getSnapshot().sessionOrderByAccount).toEqual({})
 
     fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '手动排序' }))
+    expect(one.draggable).toBe(true)
+    expect(two.draggable).toBe(true)
+    fireEvent.dragStart(one, { dataTransfer: dragData() })
+    fireDrag(two, 'drop', 180)
+    expect(b.store.getSnapshot().sessionOrderByAccount.alpha).toEqual(['two', 'one'])
     expect(screen.getAllByRole('treeitem').slice(1)[0]?.textContent).toContain('two')
 
     const updated = sessionState([summary('one', 4), summary('two', 2)])
@@ -1486,6 +1511,8 @@ describe('WorkspaceBrowser', () => {
     ], { main: sid('blank') })) })
     expect(names()).toEqual(['blank', 'mid', 'old'])
     const ordinaryBlank = screen.getByText('blank').closest('[role="treeitem"]') as HTMLElement
+    expect(ordinaryBlank.draggable).toBe(false)
+    pick('手动排序')
     expect(ordinaryBlank.draggable).toBe(true)
     const restoredOld = screen.getByText('old').closest('[role="treeitem"]') as HTMLElement
     restoredOld.getBoundingClientRect = () => old.getBoundingClientRect()
@@ -2357,7 +2384,7 @@ describe('WorkspaceBrowser', () => {
       .toEqual(['two', 'one', 'three'])
   })
 
-  it('persists Ungrouped drag order in both modes', async () => {
+  it('persists Ungrouped drag order in Manual and keeps Last updated inert', async () => {
     const sessions = sessionState([summary('one', 3), summary('two', 2), summary('three', 1)])
     const b = mount({
       useSessions: hook(sessions),
@@ -2389,6 +2416,12 @@ describe('WorkspaceBrowser', () => {
       ])
       expect(b.store.getSnapshot().sessionOrderByAccount).toEqual({})
     })
+    expect(screen.getByText('one').closest('[role="treeitem"]')?.getAttribute('draggable')).toBe('false')
+    dragAfter('one', 'three')
+    expect(b.store.getSnapshot()).toMatchObject({ orderBy: 'updated', sessionOrderByAccount: {} })
+
+    fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '手动排序' }))
     dragAfter('one', 'three')
     expect(b.store.getSnapshot().sessionOrderByAccount[UNGROUPED_KEY]).toEqual(['two', 'three', 'one'])
 
@@ -2862,9 +2895,10 @@ describe('custom grouping', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '自定义分组' }))
   }
 
-  function mountCustom() {
+  function mountCustom(overrides: Partial<WorkspaceBrowserProps> = {}) {
     const b = mount({
       useSessions: hook(sessionState([summary('alpha-s', 3), summary('beta-s', 2), summary('gamma-s', 1)])),
+      ...overrides,
     })
     switchToCustom()
     return b
@@ -2936,6 +2970,69 @@ describe('custom grouping', () => {
     expect(b.store.getSnapshot().groupExpansion['custom:1']).toBeUndefined()
     // Its member returns to the bucket rather than disappearing.
     expect(sectionTitles()).toEqual(['未分组', 'alpha-s', 'beta-s', 'gamma-s'])
+  })
+
+  it('moves Sessions between groups under Last updated without enabling group reorder', () => {
+    const b = mountCustom()
+    createGroup('运维排查')
+    createGroup('Web UI')
+    act(() => {
+      b.store.actions.moveCustomMember(sid('alpha-s'), 'custom:1')
+      b.store.actions.moveCustomMember(sid('beta-s'), 'custom:2')
+    })
+    fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '最近更新' }))
+
+    const source = screen.getByRole('treeitem', { name: /alpha-s/ })
+    const target = screen.getByRole('treeitem', { name: /beta-s/ })
+    target.getBoundingClientRect = () => ({
+      top: 100, bottom: 134, left: 0, right: 200, width: 200, height: 34, x: 0, y: 100, toJSON: () => ({}),
+    })
+    expect(source.draggable).toBe(true)
+    expect(groupHeader('运维排查').draggable).toBe(false)
+    expect(groupHeader('Web UI').draggable).toBe(false)
+    fireEvent.dragStart(source, { dataTransfer: dragData() })
+    fireDrag(target, 'dragOver', 104)
+    fireDrag(target, 'drop', 104)
+    fireEvent.dragEnd(source)
+    expect(b.store.getSnapshot()).toMatchObject({
+      orderBy: 'updated',
+      customMembers: { 'custom:1': [], 'custom:2': ['beta-s', 'alpha-s'] },
+    })
+    expect(sectionTitles()).toEqual(['运维排查', 'Web UI', 'alpha-s', 'beta-s', '未分组', 'gamma-s'])
+
+    const sameGroupSource = screen.getByRole('treeitem', { name: /alpha-s/ })
+    const sameGroupTarget = screen.getByRole('treeitem', { name: /beta-s/ })
+    fireEvent.dragStart(sameGroupSource, { dataTransfer: dragData() })
+    fireDrag(sameGroupTarget, 'dragOver', 130)
+    fireDrag(sameGroupTarget, 'drop', 130)
+    fireEvent.dragEnd(sameGroupSource)
+    expect(b.store.getSnapshot()).toMatchObject({
+      orderBy: 'updated',
+      customMembers: { 'custom:1': [], 'custom:2': ['beta-s', 'alpha-s'] },
+    })
+  })
+
+  it('shows every pending completion reminder beyond the default custom-group rows', () => {
+    const items = Array.from({ length: 10 }, (_, index) => summary(`session-${index + 1}`, 10 - index))
+    const status = (): SessionStatus => ({
+      running: false, pendingInteraction: undefined, completionUnread: false, completionPendingAck: true,
+    })
+    const b = mountCustom({
+      useSessions: hook(sessionState(items)),
+      useSessionStatus: hook<SessionStatusSnapshot>(new Map([
+        [sid('session-8'), status()],
+        [sid('session-9'), status()],
+      ])),
+    })
+    createGroup('模型上线现状分析')
+    act(() => {
+      for (const item of items) b.store.actions.moveCustomMember(item.id, 'custom:1')
+      b.store.actions.setOrderBy('updated', {})
+    })
+
+    for (const id of ['session-7', 'session-8', 'session-9']) expect(screen.getByText(id)).toBeTruthy()
+    expect(screen.queryByText('session-10')).toBeNull()
   })
 
   it('moves a Session into a group by dropping it on that group header', () => {

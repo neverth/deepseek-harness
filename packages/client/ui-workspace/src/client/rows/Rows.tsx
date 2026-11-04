@@ -258,7 +258,7 @@ interface ProjectRowAccess {
  */
 export function ProjectRowItem(props: ProjectRowItemProps) {
   if (props.group.customGroupId !== undefined) {
-    return <ProjectRow {...props} access={{ create: false, rename: true, delete: true, reorder: true }} />
+    return <ProjectRow {...props} access={{ create: false, reorder: true }} />
   }
   const workspaceId = props.group.workspaceId
   return workspaceId === undefined
@@ -283,7 +283,7 @@ function WorkspaceProjectRow({ workspaceId, ...props }: ProjectRowItemProps & { 
 }
 
 function ProjectRow({
-  group, containsCurrentDescendant = false, onToggle, onCreate, drag: offeredDrag, home, newShortcut, t, access,
+  group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag: offeredDrag, home, newShortcut, t, access,
   renderFactorySlot, useContextMenuTarget, useContextMenu,
 }: ProjectRowItemProps & { access: ProjectRowAccess }) {
   const { getTriggerProps } = useContextMenu()
@@ -298,16 +298,12 @@ function ProjectRow({
   const workspaceMenuTarget = row.workspaceId !== undefined && row.cwd !== undefined
     ? { workspaceId: row.workspaceId, path: row.cwd } : undefined
   const [customMenuOpen, setCustomMenuOpen] = useState(false)
-  const workspaceMenuItems = [
-    ...access.rename ? [{ id: 'rename', label: t('rename'), icon: <IconEditOutlineRegular /> }] : [],
-    ...access.delete ? [{
-      id: 'delete',
-      label: t(custom ? 'group.delete' : 'delete.workspace'),
-      icon: <IconTrashOutlineRegular />,
-      // Dropping a hand-made group loses no Session, so it takes no danger styling.
-      ...(custom ? {} : { danger: true as const }),
-    }] : [],
-  ]
+  const workspaceMenuItems = custom
+    ? [
+        { id: 'rename', label: t('rename'), icon: <IconEditOutlineRegular /> },
+        { id: 'delete', label: t('group.delete'), icon: <IconTrashOutlineRegular /> },
+      ]
+    : []
   const ownRow = (
     <div
       className={clsx(css.projectRow, menuOpen && css.menuOpen)}
@@ -486,10 +482,10 @@ function sessionStatuses(
   return [{ state: 'idle', label: t('status.idle') }]
 }
 
-/** Row marker: solid states paint the row's own 11px core, ongoing keeps the shared spinner. */
+/** Row marker: solid states paint the row's own 11px core; ongoing fills the 16px leading slot. */
 function StatusMarker({ state }: { state: StateDotState }) {
   return state === 'ongoing'
-    ? <StateDot state={state} />
+    ? <StateDot state={state} size={16} className={css.runningStatus} />
     : <span className={css.statusDot} data-state={state} aria-hidden="true" />
 }
 
@@ -598,13 +594,13 @@ function SessionHoverContent({ node, cwd, now, renderSlot, t }: {
  * @returns the result row.
  */
 export function SearchResultItem({
-  result, currentId, onOpen, onUnarchive, onAcknowledge, useSessionAccess, t,
+  result, currentId, onOpen, onUnarchive, onAcknowledge = () => {}, useSessionAccess, t,
 }: {
   result: SearchResultNode
   currentId: string | undefined
   onOpen: (id: SearchResultNode['id']) => void
   onUnarchive: (id: SearchResultNode['id']) => void
-  onAcknowledge: (id: SearchResultNode['id']) => void
+  onAcknowledge?: ((id: SearchResultNode['id']) => void) | undefined
   t: RowTranslate
 } & Pick<WorkspaceBrowserProps, 'useSessionAccess'>) {
   const selected = result.id === currentId
@@ -698,7 +694,7 @@ export function SessionNodeItem({
   now: number
   onOpen: (id: SessionNode['id']) => void
   /** Clear a completion reminder the user confirmed. */
-  onAcknowledge: (id: SessionNode['id']) => void
+  onAcknowledge?: ((id: SessionNode['id']) => void) | undefined
   /** Open the rename dialog from a title double-click (id + current title); see the function JSDoc for the press precondition. */
   onRenameRequest: (id: SessionNode['id'], currentTitle: string) => void
   /** Scroll this row into view after search navigation, then release the reveal request. */

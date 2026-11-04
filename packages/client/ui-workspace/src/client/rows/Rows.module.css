@@ -215,6 +215,10 @@
   line-height: 20px;
 }
 
+.projectRow .title {
+  font-weight: 500;
+}
+
 .renameInput {
   min-width: 0;
   font-size: 14px;
@@ -295,8 +299,7 @@
 }
 
 /* Sidebar status marker: one solid 11px core per state, larger than the 10px
-   shared StateDot slot the rest of the product uses. Ongoing keeps that shared
-   spinner, which reads as motion rather than as a sized dot. */
+   shared StateDot slot the rest of the product uses. */
 .statusDot {
   flex: none;
   width: 11px;
@@ -312,6 +315,12 @@
 
 .statusDot[data-state='warning'] {
   color: var(--dsw-alias-state-warn-primary);
+}
+
+/* Running activity keeps the shared motion but fills the leading slot and uses
+   the theme's active color instead of the quiet global loading color. */
+.runningStatus[data-state='ongoing'] {
+  color: var(--dsw-alias-state-business-primary);
 }
 
 /* Acknowledgement control: the same 11px warning dot as a button that clears

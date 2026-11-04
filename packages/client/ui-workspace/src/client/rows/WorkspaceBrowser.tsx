@@ -18,11 +18,11 @@ import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, us
 import clsx from 'clsx'
 import { WorkspaceDialogs } from './WorkspaceDialogs.tsx'
 import {
-  AnimatedRows, HoverCardGroup, IconArchiveCheckOutlineRegular, IconArchiveOffOutlineRegular, IconArchiveOutlineRegular,
+  AnimatedRows, Button, HoverCardGroup, IconArchiveCheckOutlineRegular, IconArchiveOffOutlineRegular, IconArchiveOutlineRegular,
   IconChevronsUpDownOutlineRegular, IconClockOutlineRegular, IconCloseFillRegular,
   IconFlatListOutlineRegular, IconFolderCloseRegular, IconFolderOpenOutlineRegular, IconProjectAddOutlineRegular,
   IconQueueOutlineRegular, IconSearchOutlineRegular, IconSlidersTwoOutlineRegular,
-  IconWorkspaceTreeOutlineRegular, Menu, Tooltip,
+  IconWorkspaceTreeOutlineRegular, Menu, Modal, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   SessionListState, SessionSearchResultItem,
@@ -58,9 +58,8 @@ const SESSION_WATERMARK_BASE = 3
 const SESSION_WATERMARK_AUTO_MAX = 50
 
 /**
- * Show the blank row, the first `watermark` non-blank rows, and every unread
- * completion: a finished Session keeps its reminder row until the user opens it,
- * so the row limit never hides one.
+ * Show the blank row, the first `watermark` non-blank rows, and every
+ * completion reminder that still needs the user: the row limit never hides one.
  */
 function watermarkRows(sessions: readonly SessionNode[], watermark: number): {
   rows: readonly SessionNode[]
@@ -70,14 +69,14 @@ function watermarkRows(sessions: readonly SessionNode[], watermark: number): {
   const rows = sessions.filter((session) => {
     if (session.blank) return true
     count += 1
-    return count <= watermark || session.completed
+    return count <= watermark || session.completed || session.awaitingAck
   })
   return { rows, hiddenCount: sessions.length - rows.length }
 }
 
 /**
  * Smallest watermark that covers every non-blank row within the automatic maximum that is running, has a running
- * child, awaits the user, carries an unread completion, or is current, and the reveal target at any position.
+ * child, awaits the user, carries a completion reminder, or is current, and the reveal target at any position.
  */
 function requiredWatermark(
   sessions: readonly SessionNode[],
@@ -91,7 +90,7 @@ function requiredWatermark(
     index += 1
     const attention = index <= SESSION_WATERMARK_AUTO_MAX && (
       session.running || session.runningSubagentCount > 0 || session.pendingInteraction !== undefined
-      || session.completed || session.id === current
+      || session.completed || session.awaitingAck || session.id === current
     )
     if (attention || session.id === revealSessionId) required = index
   }
@@ -278,6 +277,8 @@ type SessionTreeProps = Pick<
   ungroupedSessionIds: readonly SessionId[]
   /** Whether the current Workspace stream has a complete Host baseline. */
   workspaceReady: boolean
+  /** Selected Session order; Session rows are draggable only in Manual. */
+  orderBy: SessionOrderBy
   /** Grouping, ordering, and filter changes replace the view without row motion. */
   animationResetKey: string
   /** Nest Workspaces under their nearest registered ancestors. */
@@ -286,7 +287,7 @@ type SessionTreeProps = Pick<
   groupExpansion: Readonly<Record<string, boolean>>
   /** Persist one Workspace group's expansion. */
   setGroupExpanded: (key: string, expanded: boolean) => void
-  /** Save a drag order and select Manual. */
+  /** Save a drag order while Manual is selected. */
   setSessionOrder: (accountKey: string, order: readonly string[]) => void
   /** Registry-global pin and archive sets plus the archived-visibility choice. */
   rowState: SessionRowState
@@ -321,7 +322,7 @@ function EmptySessions({ rowState, onLeaveArchivedOnly, t }: Pick<SessionTreePro
 /** The scrolling session tree; unmounting drops the sessions subscription and the session watermarks. */
 function SessionTree({
   list, useSessionStatus, startSession, open, workspaces, ungroupedSessionIds,
-  rowState, onLeaveArchivedOnly,
+  rowState, onLeaveArchivedOnly, orderBy,
   workspaceReady, animationResetKey, usePanelInfo, useRemoteAccess, useSessionAccess, useWorkspaceAccess,
   onSessionRenameRequest, onAcknowledge,
   renderSlot, renderFactorySlot, useContextMenuTarget, useContextMenu,
@@ -592,7 +593,7 @@ function SessionTree({
           const compatibleTarget = sameGroupDrag && drag.pinned === node.pinned
           const normalizeHalf = (half: 'before' | 'after'): 'before' | 'after' =>
             node.blank ? 'after' : half
-          const dragProps = {
+          const dragProps = orderBy !== 'manual' ? undefined : {
             start: () => {
               sessionDropCommitted.current = false
               setDrag({ accountKey: group.key, sessionId: node.id, pinned: node.pinned, over: null })
@@ -688,7 +689,7 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   list, sessionIds, rowState, onLeaveArchivedOnly, useSessionStatus, useSessionAccess, open, onSessionRenameRequest,
-  onAcknowledge, usePanelInfo, setSessionOrder, workspaceReady, animationResetKey,
+  onAcknowledge, usePanelInfo, setSessionOrder, workspaceReady, orderBy, animationResetKey,
   revealSessionId, onSessionRevealed, renderSlot, renderFactorySlot, useContextMenuTarget, useContextMenu, home, t,
 }: Pick<
   SessionTreeProps,
@@ -702,6 +703,7 @@ function FlatList({
   | 'usePanelInfo'
   | 'setSessionOrder'
   | 'workspaceReady'
+  | 'orderBy'
   | 'animationResetKey'
   | 'revealSessionId'
   | 'onSessionRevealed'
@@ -766,7 +768,7 @@ function FlatList({
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
               useSessionAccess={useSessionAccess}
-              drag={{
+              drag={orderBy !== 'manual' ? undefined : {
                 start: () => {
                   dropCommitted.current = false
                   setDrag({ accountKey: FLAT_SESSION_ORDER_KEY, sessionId: node.id, pinned: node.pinned, over: null })
@@ -848,10 +850,8 @@ type CustomGroupTreeProps = Pick<
   animationResetKey: string
   groupExpansion: Readonly<Record<string, boolean>>
   setGroupExpanded: (key: string, expanded: boolean) => void
-  /** Save the ungrouped bucket's manual order and select Manual. */
+  /** Save the ungrouped bucket's manual order. */
   setSessionOrder: (accountKey: string, order: readonly SessionId[]) => void
-  /** Select Manual, keeping the rows the user is looking at in place. */
-  selectManualOrder: () => void
   /** Place one Session in a group, or remove it from every group when `groupId` is absent. */
   moveCustomMember: (sessionId: SessionId, groupId: string | undefined, beforeId?: SessionId) => void
   /** Move one group before another, or to the end when the anchor is absent. */
@@ -861,6 +861,11 @@ type CustomGroupTreeProps = Pick<
   onSessionRenameRequest: (sessionId: SessionNode['id'], currentTitle: string) => void
   revealSessionId?: SessionId | undefined
   onSessionRevealed: (sessionId: SessionId) => void
+  /** Session/Workspace menu bindings the rows share with the grouped tree. */
+  openSessionMenu: WorkspaceBrowserProps['openSessionMenu']
+  openWorkspaceMenu: WorkspaceBrowserProps['openWorkspaceMenu']
+  useContextMenuTarget: WorkspaceBrowserProps['useContextMenuTarget']
+  useContextMenu: WorkspaceBrowserProps['useContextMenu']
 }
 
 /** Reorder one id inside an ordered list, appending when the anchor is gone. */
@@ -889,9 +894,10 @@ function CustomGroupTree({
   list, groups, ungroupedSessionIds, orderBy, rowState, onLeaveArchivedOnly,
   useSessionStatus, useRemoteAccess, useSessionAccess, useWorkspaceAccess,
   open, onSessionRenameRequest, usePanelInfo, onAcknowledge,
-  setSessionOrder, selectManualOrder, moveCustomMember, moveCustomGroup, workspaceReady, animationResetKey,
+  setSessionOrder, moveCustomMember, moveCustomGroup, workspaceReady, animationResetKey,
   groupExpansion, setGroupExpanded, onRenameGroup, onDeleteGroup,
   revealSessionId, onSessionRevealed, renderSlot, home, t,
+  openSessionMenu, openWorkspaceMenu, useContextMenuTarget, useContextMenu,
 }: CustomGroupTreeProps) {
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
   const statuses = useSessionStatus(s => s)
@@ -957,9 +963,11 @@ function CustomGroupTree({
     if (dropCommitted.current) return
     dropCommitted.current = true
     setDrag(null)
-    // A hand-placed row is a manual position, exactly as a row drag is in the
-    // other grouping modes; Last-updated would otherwise ignore where it landed.
-    selectManualOrder()
+    if (orderBy === 'updated') {
+      if (over.key === active.from) return
+      moveCustomMember(active.sessionId, over.key === UNGROUPED_KEY ? undefined : over.key)
+      return
+    }
     const beforeId = over.id === null ? undefined : beforeIdFor(over.key, over.id, over.half)
     if (over.key === UNGROUPED_KEY) {
       // Leaving a group is the same write as entering one; a Session already in
@@ -982,8 +990,6 @@ function CustomGroupTree({
     orderDropCommitted.current = true
     setOrderDrag(null)
     if (over.id === active.groupId) return
-    // Section order is saved, so the drag selects the order it is editing.
-    selectManualOrder()
     if (over.id === UNGROUPED_KEY) {
       moveCustomGroup(active.groupId, undefined)
       return
@@ -1010,7 +1016,7 @@ function CustomGroupTree({
       && orderDrag.over.id === section.key
       ? orderDrag.over.half
       : null
-    const orderDragProps = customGroupId === undefined
+    const orderDragProps = customGroupId === undefined || orderBy !== 'manual'
       ? undefined
       : {
         start: () => {
@@ -1050,9 +1056,18 @@ function CustomGroupTree({
             }
             // A row's own handler owns the pointer while it is over that row,
             // so only a genuine header hit re-targets the whole section.
-            if (e.target instanceof Element && e.target.closest('[data-row-key^="session:"]') !== null) return
-            setDrag(active => active === null ? active : {
-              ...active, over: { key: section.key, id: null, half: 'after' },
+            if (e.target instanceof Element && e.target.closest('[data-row-key^="session:"]') !== null) {
+              if (orderBy !== 'manual') {
+                setDrag(active => active === null || active.from !== section.key
+                  ? active
+                  : { ...active, over: null })
+              }
+              return
+            }
+            setDrag(active => {
+              if (active === null) return active
+              if (orderBy !== 'manual' && active.from === section.key) return { ...active, over: null }
+              return { ...active, over: { key: section.key, id: null, half: 'after' } }
             })
           }}
         onDrop={(drag === null && orderDrag === null)
@@ -1073,6 +1088,9 @@ function CustomGroupTree({
           useWorkspaceAccess={useWorkspaceAccess}
           t={t}
           drag={orderDragProps}
+          openWorkspaceMenu={openWorkspaceMenu}
+          useContextMenuTarget={useContextMenuTarget}
+          useContextMenu={useContextMenu}
           onToggle={() => {
             if (section.expanded) dropWatermarks(section.key)
             setGroupExpanded(section.key, !section.expanded)
@@ -1089,7 +1107,9 @@ function CustomGroupTree({
             {visible.rows.map((node) => {
               // A same-section drop stays inside the row's own pinned block; a
               // cross-section drop is a move and any row accepts it.
-              const accepts = drag !== null && (drag.from !== section.key || drag.pinned === node.pinned)
+              const accepts = drag !== null && (
+                drag.from !== section.key || (orderBy === 'manual' && drag.pinned === node.pinned)
+              )
               return (
                 <SessionNodeItem
                   key={node.id}
@@ -1100,6 +1120,9 @@ function CustomGroupTree({
                   onRenameRequest={onSessionRenameRequest}
                   onAcknowledge={onAcknowledge}
                   renderSlot={renderSlot}
+                  openSessionMenu={openSessionMenu}
+                  useContextMenuTarget={useContextMenuTarget}
+                  useContextMenu={useContextMenu}
                   onReveal={node.id === revealSessionId && section.key === revealGroup
                     ? () => { onSessionRevealed(node.id) }
                     : undefined}
@@ -1111,19 +1134,23 @@ function CustomGroupTree({
                       })
                     },
                     active: accepts,
-                    marker: drag !== null && drag.over?.id === node.id ? drag.over.half : null,
+                    marker: orderBy === 'manual' && drag !== null && drag.over?.id === node.id
+                      ? drag.over.half
+                      : null,
                     hover: (half) => {
                       if (!accepts) return
                       setDrag(active => active === null ? active : {
                         ...active,
-                        over: { key: section.key, id: node.id, half: node.blank ? 'after' : half },
+                        over: orderBy === 'manual'
+                          ? { key: section.key, id: node.id, half: node.blank ? 'after' : half }
+                          : { key: section.key, id: null, half: 'after' },
                       })
                     },
                     drop: (half) => {
-                      if (drag === null) return
-                      commit(drag, {
-                        key: section.key, id: node.id, half: node.blank ? 'after' : half,
-                      })
+                      if (!accepts || drag === null) return
+                      commit(drag, orderBy === 'manual'
+                        ? { key: section.key, id: node.id, half: node.blank ? 'after' : half }
+                        : { key: section.key, id: null, half: 'after' })
                     },
                     end: () => {
                       if (drag !== null && drag.over !== null) commit(drag, drag.over)
@@ -1668,6 +1695,7 @@ export function WorkspaceBrowser({
   const [renameDraft, setRenameDraft] = useState('')
   const [renaming, setRenaming] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
+  const composingRef = useRef(false)
   const renameTrimmed = renameDraft.trim()
   // Self is excluded by identity, not by title: the draft is seeded with the
   // localized label, which for an automatically titled Workspace equals its
@@ -1783,7 +1811,14 @@ export function WorkspaceBrowser({
               orderBy={orderBy}
               archivedFilter={archivedFilter}
               onGroupPick={actions.setGroupBy}
-              onOrderPick={(mode) => { actions.setOrderBy(mode, activeSessionOrders) }}
+              onOrderPick={(mode) => {
+                if (mode === 'manual' && groupBy === 'custom') {
+                  actions.syncCustomMemberOrders(Object.fromEntries(
+                    customMemberships.map(group => [group.id, group.sessionIds]),
+                  ))
+                }
+                actions.setOrderBy(mode, activeSessionOrders)
+              }}
               onArchivedFilterPick={actions.setArchivedFilter}
               t={t}
             />
@@ -1924,18 +1959,12 @@ export function WorkspaceBrowser({
                 open={guardedOpen}
                 onSessionRenameRequest={requestSessionRename}
                 onAcknowledge={acknowledgeCompletion}
-                renderSlot={renderSlot}
+                renderSlot={renderSlot as CustomGroupTreeProps['renderSlot']}
                 renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
                 useContextMenuTarget={useContextMenuTarget}
                 groupExpansion={groupExpansion}
                 setGroupExpanded={actions.setGroupExpanded}
                 setSessionOrder={saveSessionOrder}
-                selectManualOrder={() => {
-                  actions.syncCustomMemberOrders(Object.fromEntries(
-                    customMemberships.map(group => [group.id, group.sessionIds]),
-                  ))
-                  actions.setOrderBy('manual', activeSessionOrders)
-                }}
                 moveCustomMember={actions.moveCustomMember}
                 moveCustomGroup={actions.moveCustomGroup}
                 onRenameGroup={(groupId, currentName) => {
@@ -1960,12 +1989,13 @@ export function WorkspaceBrowser({
                   rowState={rowState}
                   onLeaveArchivedOnly={leaveArchivedOnly}
                   workspaceReady={workspaceReady}
+                  orderBy={orderBy}
                   animationResetKey={`${groupBy}/${orderBy}/${archivedFilter}`}
                   useSessionStatus={useSessionStatus}
                   open={guardedOpen}
                   onSessionRenameRequest={requestSessionRename}
                   onAcknowledge={acknowledgeCompletion}
-                  renderSlot={renderSlot}
+                  renderSlot={renderSlot as SessionTreeProps['renderSlot']}
                   setSessionOrder={saveSessionOrder}
                   renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
                   useContextMenuTarget={useContextMenuTarget}
@@ -1986,12 +2016,13 @@ export function WorkspaceBrowser({
                   useSessionStatus={useSessionStatus}
                   onSessionRenameRequest={requestSessionRename}
                   onAcknowledge={acknowledgeCompletion}
-                  renderSlot={renderSlot}
+                  renderSlot={renderSlot as SessionTreeProps['renderSlot']}
                   renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
                   useContextMenuTarget={useContextMenuTarget}
                   workspaces={orderedWorkspaces}
                   ungroupedSessionIds={orderedUngroupedSessionIds}
                   workspaceReady={workspaceReady}
+                  orderBy={orderBy}
                   nestWorkspaces={groupBy === 'workspace-tree'}
                   animationResetKey={`${groupBy}/${orderBy}/${archivedFilter}`}
                   groupExpansion={groupExpansion}
