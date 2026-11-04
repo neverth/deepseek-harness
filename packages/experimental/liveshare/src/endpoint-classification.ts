@@ -100,6 +100,7 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'session/create': 'owner-only', // owner creates a Session
   'session/initializeDefaultModel': 'owner-only', // owner initializes a Session default model
   'session/openWorkspacePath': 'owner-only', // owner opens a Workspace path
+  'session/refreshTitle': 'owner-only', // owner regenerates a Session title
   'session/search': 'owner-only', // owner searches across Sessions
   'session/selectModel': 'owner-only', // owner selects a Session model
   'session/updateQueue': 'owner-only', // owner edits queued input
@@ -131,6 +132,7 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'workspace/insertSessionBefore': 'owner-only', // owner reorders Sessions
   'workspace/pinSession': 'owner-only', // owner pins a Session
   'workspace/rename': 'owner-only', // owner renames a Workspace
+  'workspace/saveViewSnapshot': 'owner-only', // owner backs up the browser's view state
   'workspace/unarchiveSession': 'owner-only', // owner unarchives a Session
   'workspace/unpinSession': 'owner-only', // owner unpins a Session
   'workspaceFiles/changes': 'owner-only', // owner Workspace file access
