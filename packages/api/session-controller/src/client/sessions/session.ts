@@ -48,21 +48,17 @@ function projectionsBaseline(value: SessionProjectionBaseline): ProjectionsBasel
   }
 }
 
-/**
- * Messages requested per history page. Sized so all but the longest sessions
- * open complete in one page: paging exists for the long minority, and a page
- * that ends mid-history leaves the straddling Turn without its start.
- */
-export const PAGE_MESSAGES = 500
+/** Minimum message count for ordinary history windows. */
+export const PAGE_MESSAGES = 50
 
-const HISTORY_PAGE_OPTIONS = { maxMessages: PAGE_MESSAGES, turnWindow: { minMessages: PAGE_MESSAGES, minTurns: 2 } }
+const HISTORY_PAGE_OPTIONS = { maxMessages: 500, turnWindow: { minMessages: PAGE_MESSAGES, minTurns: 2 } }
 
-/** Messages requested per page while a turn jump loops backwards. */
-export const JUMP_PAGE_MESSAGES = 1000
+/** Minimum messages per page while a turn jump loops backwards. */
+export const JUMP_PAGE_MESSAGES = 200
 
 const JUMP_PAGE_OPTIONS = {
-  maxMessages: JUMP_PAGE_MESSAGES,
-  turnWindow: { minMessages: JUMP_PAGE_MESSAGES, minTurns: 2 },
+  ...HISTORY_PAGE_OPTIONS,
+  turnWindow: { ...HISTORY_PAGE_OPTIONS.turnWindow, minMessages: JUMP_PAGE_MESSAGES },
 }
 
 interface PendingHistory {
@@ -75,6 +71,8 @@ interface PendingHistory {
 export interface SessionOptions {
   /** Catalog-discovered address selecting non-activating subagent transport. */
   address?: SubagentAddress
+  /** Whether the exact direct parent Agent is available in Host summaries; absent until known. */
+  parentAvailable?: boolean
   /**
    * Publish each accepted prompt to the Manager, including after this Session
    * object is replaced. Acceptance converts display state, but does not
@@ -115,6 +113,7 @@ export class Session implements SessionFace {
   private readonly assistantStream = new ClientAssistantStream()
   private running = false
   private address: SubagentAddress | undefined
+  private parentAvailable: boolean | undefined
   /**
    * Sticky send marker, private input of the composerPhase derivation: set
    * when the Host accepts a prompt, never reset — the blank → engaging edge of
@@ -194,6 +193,7 @@ export class Session implements SessionFace {
   ) {
     this.projections = options.projections ?? new ProjectionValueStore()
     this.address = options.address
+    this.parentAvailable = options.parentAvailable
     this.notifier = new Notifier(() => {
       this.snapshotCache = this.buildSnapshot()
     })
@@ -294,7 +294,9 @@ export class Session implements SessionFace {
       const routedContent = content as Exclude<PromptContentPart, { readonly type: 'file' }>[]
       const routed = await this.remote.subagents.prompt({
         requestId: requestId ?? randomUUID() as SessionRequestId,
+        parentSessionId: this.address.parentSessionId,
         childSessionId: this.address.childSessionId,
+        mode: 'continuable',
         delivery: mode,
         content: routedContent,
         clientTimeZone: resolvedClientTimeZone(),
@@ -361,14 +363,18 @@ export class Session implements SessionFace {
   /**
    * Stop the active turn while the Host preserves pending inbox work; failures
    * land in promptError (same error-strip display slot). A subagent address
-   * routes through `subagents.interruptByUser`, authorized on the target Session
-   * without requiring a live parent Agent.
+   * routes through `subagents.interruptByParent`, whose durable parent-address
+   * authority works without a live parent Agent.
    * @returns the cancel result.
    */
   async cancel(): Promise<RemoteResult<{ accepted: true }>> {
     const address = this.address
     const result = address !== undefined
-      ? await this.remote.subagents.interruptByUser(address.childSessionId)
+      ? await this.remote.subagents.interruptByParent(
+        address.childSessionId,
+        address.parentSessionId,
+        'continuable',
+      )
       : await this.remote.session.cancel({ sessionId: this.sessionId })
     if (!result.ok) {
       this.promptError = { op: 'stop', error: result.error }
@@ -572,14 +578,26 @@ export class Session implements SessionFace {
    * Install or clear the catalog-discovered transport address. A changed
    * address rebuilds an already-open window through its new history route.
    * @param address - direct parent/child address, or undefined for ordinary transport.
+   * @param parentAvailable - latest exact-parent availability hint, or undefined before a catalog read.
    */
-  configureSubagent(address: SubagentAddress | undefined): void {
+  configureSubagent(address: SubagentAddress | undefined, parentAvailable?: boolean): void {
     const same = this.address?.parentSessionId === address?.parentSessionId
       && this.address?.childSessionId === address?.childSessionId
       && this.address?.mode === address?.mode
     this.address = address
+    this.parentAvailable = parentAvailable
     if (!same && this.openState !== 'cold') void this.resync()
     else this.notifier.markDirty()
+  }
+
+  /**
+   * Update only the parent availability hint from a catalog refresh.
+   * @param available - whether the exact direct parent is live.
+   */
+  handleSubagentParentAvailable(available: boolean): void {
+    if (this.parentAvailable === available) return
+    this.parentAvailable = available
+    this.notifier.markDirty()
   }
 
   /**
@@ -932,6 +950,7 @@ export class Session implements SessionFace {
           address: this.address.mode === 'unknown' && identity != null
             ? { ...this.address, mode: identity.mode }
             : this.address,
+          ...(this.parentAvailable === undefined ? {} : { parentAvailable: this.parentAvailable }),
         },
       removed: this.removed,
       openState: this.openState,
