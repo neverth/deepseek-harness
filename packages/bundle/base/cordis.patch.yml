@@ -51,6 +51,13 @@
 
     - id: typert-gateway
       name: '@deepseek-ai/dsh-api-gateway'
+      config:
+        # Phones reach this instance through the SSH tunnel and a mobile link
+        # that stalls for seconds at a time. The default 2s ping with two
+        # missed heartbeats (~4s) terminated healthy connections, and every
+        # reconnect reloaded the page's data. 15s tolerates a 30-45s stall
+        # while still reclaiming a peer that is really gone.
+        websocketHeartbeatIntervalMs: 15000
 
     # Method-level access control for non-owner Peers; the Gateway requires it,
     # and its Client half publishes the standard access Hooks.
