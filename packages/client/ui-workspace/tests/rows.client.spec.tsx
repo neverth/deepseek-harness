@@ -176,9 +176,6 @@ describe('native row drag previews', () => {
       : <SessionNodeItem node={{
         id: sid('session'), title: 'Draggable row', blank: false, running: false,
         runningSubagentCount: 0, completed: false, failed: false, updatedAt: 0, pinned: false, archived: false,
-      }} currentId={undefined} now={0} onOpen={vi.fn()} drag={drag} t={t} />)
-    const row = screen.getByRole('treeitem')
-    stubRect(row)
     row.style.paddingInlineStart = '32px'
     const transfer = {
       effectAllowed: '', setData: vi.fn(),
@@ -238,7 +235,6 @@ describe('native row drag previews', () => {
     const image = start()
     rerender(<SessionNodeItem node={{
       id: sid('session'), title: 'Draggable row', blank: false, running: false,
-      runningSubagentCount: 0, completed: false, failed: false, updatedAt: 0, pinned: false, archived: true,
     }} currentId={undefined} now={0} onOpen={vi.fn()} drag={drag} t={t} />)
     expect(row.getAttribute('draggable')).toBe('false')
     fireEvent.dragEnd(row)
@@ -312,14 +308,14 @@ describe('workspace browser rows', () => {
     }
     const denied = vi.fn(() => false)
     const view = render(<SearchResultItem result={result} currentId={undefined}
-      onOpen={vi.fn()} onUnarchive={vi.fn()} useSessionAccess={denied} t={t} />)
+      onOpen={vi.fn()} onUnarchive={vi.fn()} onAcknowledge={vi.fn()} useSessionAccess={denied} t={t} />)
     expect(denied).toHaveBeenCalledWith(result.id, 'workspace/unarchiveSession')
     expect(view.queryByRole('button', { name: zh['menu.unarchiveSession'] })).toBeNull()
     cleanup()
     // The allowed answer renders the same verb.
     const allowed = vi.fn(() => true)
     const restored = render(<SearchResultItem result={result} currentId={undefined}
-      onOpen={vi.fn()} onUnarchive={vi.fn()} useSessionAccess={allowed} t={t} />)
+      onOpen={vi.fn()} onUnarchive={vi.fn()} onAcknowledge={vi.fn()} useSessionAccess={allowed} t={t} />)
     expect(restored.getByRole('button', { name: zh['menu.unarchiveSession'] })).toBeTruthy()
   })
 
@@ -485,9 +481,11 @@ describe('workspace browser rows', () => {
     const done = renderRow({ completed: true })
     expect(done.container.querySelector('[data-state="done"]')).not.toBeNull()
     done.unmount()
-    // Running wins the slot: the ongoing dot takes precedence over the unread dot.
-    const running = renderRow({ completed: true, failed: false, running: true })
-    expect(running.container.querySelector('[data-state="ongoing"]')).not.toBeNull()
+    // Running wins the slot: the animated ongoing dot, no done dot.
+    const running = renderRow({ completed: true, running: true })
+    const runningMarker = running.container.querySelector('[data-state="ongoing"]')
+    expect(runningMarker?.getAttribute('width')).toBe('16')
+    expect(runningMarker?.getAttribute('height')).toBe('16')
     expect(running.container.querySelector('[data-state="done"]')).toBeNull()
     running.unmount()
     // Descendant activity also wins until the last running descendant stops.
@@ -859,6 +857,9 @@ describe('workspace browser rows', () => {
     const located: SessionNode = {
       id: sid('s-cwd'), title: 'Located', blank: false, running: false,
       runningSubagentCount: 0, completed: false, failed: false, updatedAt: 0, pinned: false, archived: false,
+=======
+      runningSubagentCount: 0, completed: false, awaitingAck: false, updatedAt: 0, pinned: false, archived: false,
+>>>>>>> 3f0ff367f7 (feat(ui-workspace): 分组拖拽按排序模式收口并保持完成提醒可见)
       cwd: '/home/u/project',
     }
     function hoverCard(node: SessionNode): void {
@@ -1063,9 +1064,9 @@ describe('workspace browser rows', () => {
       expect(row.querySelector('[data-state="warning"]')).toBeTruthy()
       expect(row.querySelector('[data-state="ongoing"]')).toBeNull()
       expect(row.textContent).toContain(label)
-      expect(title.nextElementSibling?.textContent).toBe(compactLabel)
+      expect(title.parentElement?.nextElementSibling?.textContent).toBe(compactLabel)
       expect(rowCss.timestamp).toBeTypeOf('string')
-      expect(title.nextElementSibling?.firstElementChild?.classList.contains(rowCss.timestamp!)).toBe(false)
+      expect(title.parentElement?.nextElementSibling?.firstElementChild?.classList.contains(rowCss.timestamp!)).toBe(false)
       expect(row.querySelector('[class*="time"]')?.getAttribute('aria-hidden')).toBe('true')
       expect(row.textContent).not.toContain('刚刚')
 
@@ -1222,6 +1223,7 @@ describe('workspace browser rows', () => {
     const drag = dragProps({ active: true, marker: 'before' })
     render(<SessionNodeItem node={{
       id: sid('not-draggable'), title: 'Not draggable', blank: state === 'blank', running: false,
+<<<<<<< HEAD
       runningSubagentCount: 0, completed: false, failed: false, updatedAt: 0, pinned: false, archived: state === 'archived',
     }} currentId={undefined} now={0} onOpen={vi.fn()} drag={drag} t={t} />)
     const row = screen.getByRole('treeitem')

@@ -22,8 +22,10 @@ import {
 } from '../src/client/contract/slots.ts'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
 import { ArchiveSessionRowButton, SessionArchiveConfirmDialog } from '../src/client/session-actions/ArchiveSession.tsx'
+import { GroupPickerDialog, MoveToGroupMenuItem } from '../src/client/session-actions/MoveToGroupSession.tsx'
 import { PinSessionRowButton } from '../src/client/session-actions/PinSession.tsx'
 import { SessionRenameDialog } from '../src/client/session-actions/RenameSession.tsx'
+import { ShareSessionMenuItem } from '../src/client/session-actions/ShareSession.tsx'
 import { RowActionToast } from '../src/client/session-actions/RowActionToast.tsx'
 import type { ArchiveToastInjected, ToastDisplayInjected } from '../src/client/contract/toast.ts'
 import { WorkspacePicker } from '../src/client/WorkspacePicker.tsx'
@@ -31,6 +33,7 @@ import { FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
 import { UNGROUPED_KEY } from '../src/client/tree.ts'
 import { SECTION_HOOK_CONTEXT, SECTION_INJECT } from './section-scroller.client.ts'
 import { provideSessionStatus } from './session-status.client.ts'
+import { apply as hostApply } from '../src/index.ts'
 
 const sid = (id: string) => id as SessionId
 const summary = (id: string, updatedAt: number): SessionSummary => ({
@@ -192,15 +195,14 @@ type RowListName = typeof MENU_ITEM | typeof ROW_ACTION | 'shell.overlay'
 function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
   const children = Object.fromEntries([...names, 'contextMenu.content', 'contextMenu.icon'].map(name => [
     name, { kind: name === 'shell.overlay' ? 'list' : name.startsWith('contextMenu.') ? 'keyed' : 'single', scope: 'root',
-      ...name === 'contextMenu.icon' ? { inline: true } : {},
-      ...name === 'sidebar.workspaces' ? { inject: SECTION_INJECT } : {} },
+      ...name === 'contextMenu.icon' ? { inline: true } : {} },
   ]))
   return slots.register({ name: 'root', children } as never, () => null)
 }
 
 /** Own the sidebar declaration independently of the frame-wide overlay in lifecycle tests. */
 function SidebarDeclarationOwner({ renderSlot }: PropsRenderSlots<'sidebar.workspaces'>) {
-  return renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} }, { hookContext: SECTION_HOOK_CONTEXT })
+  return renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
 }
 
 /** The one entry registered under `id` in a list. */
@@ -310,9 +312,9 @@ describe('ui-workspace apply', () => {
     await Promise.resolve()
     expect(after.slots.entries('conversation.hero.workspace')[0]!.component).toBe(WorkspacePicker)
     // The row actions follow the browser's own declaration, whenever it lands.
-    expect(after.slots.entries(MENU_ITEM)).toHaveLength(0)
+    expect(after.slots.entries(MENU_ITEM)).toHaveLength(2)
     expect(after.slots.entries(ROW_ACTION)).toHaveLength(2)
-    expect(after.slots.entries('shell.overlay')).toHaveLength(3)
+    expect(after.slots.entries('shell.overlay')).toHaveLength(4)
   })
 
   it('declares the two Session row lists and registers the shipped actions and overlay surfaces into them', async () => {
@@ -330,13 +332,17 @@ describe('ui-workspace apply', () => {
 
     const rows = (key: RowListName) => b.slots.entries(key)
       .map(registration => [registration.options.id, registration.options.order, registration.component, registration.locale])
-    expect(rows(MENU_ITEM)).toEqual([])
+    expect(rows(MENU_ITEM)).toEqual([
+      ['move-to-group', 250, MoveToGroupMenuItem, 'workspace'],
+      ['share', 500, ShareSessionMenuItem, 'workspace'],
+    ])
     expect(rows(ROW_ACTION)).toEqual([
       ['archive', 100, ArchiveSessionRowButton, 'workspace'],
       ['pin', 200, PinSessionRowButton, 'workspace'],
     ])
     expect(rows('shell.overlay')).toEqual([
       ['workspace.session-rename', undefined, SessionRenameDialog, 'workspace'],
+      ['workspace.group-picker', undefined, GroupPickerDialog, 'workspace'],
       ['workspace.session-archive', undefined, SessionArchiveConfirmDialog, 'workspace'],
       ['workspace.row-toast', undefined, RowActionToast, undefined],
     ])
@@ -348,8 +354,9 @@ describe('ui-workspace apply', () => {
     expect(rowToastEntry.store).toBeUndefined()
     expect(b.slots.entries('workspace.toast').map(row => row.options.key)).toEqual([
       'readingFailed',
-      'sessionIdCopied', 'sessionIdCopyFailed', 'pinFailed', 'unpinFailed', 'archivedNotOpenable',
-      'defaultWorkspaceFailed', 'shortcutForkFailed', 'createFailed', 'forkRequiresOpen', 'archived', 'stoppedAndArchived',
+      'sessionIdCopied', 'sessionIdCopyFailed', 'titleRefreshFailed', 'pinFailed', 'unpinFailed',
+      'archivedNotOpenable', 'defaultWorkspaceFailed', 'shareCopied', 'shareFailed',
+      'shortcutForkFailed', 'createFailed', 'forkRequiresOpen', 'archived', 'stoppedAndArchived',
     ])
     for (const registration of b.slots.entries('workspace.toast')) {
       expect(registration.locale).toBe('workspace')
@@ -969,9 +976,9 @@ describe('ui-workspace apply', () => {
     declare(b.slots, 'sidebar.workspaces', 'conversation.hero.workspace', 'conversation.empty.workspace', 'shell.overlay')
     const fiber = b.ctx.plugin({ inject: [...inject], apply }, syncedConfig({ recentViewLimit: 10 }))
     await fiber.await()
-    expect(b.slots.entries(MENU_ITEM)).toHaveLength(0)
+    expect(b.slots.entries(MENU_ITEM)).toHaveLength(2)
     expect(b.slots.entries(ROW_ACTION)).toHaveLength(2)
-    expect(b.slots.entries('shell.overlay')).toHaveLength(3)
+    expect(b.slots.entries('shell.overlay')).toHaveLength(4)
     await fiber.dispose()
     expect(b.slots.entries('sidebar.workspaces')).toHaveLength(0)
     expect(b.slots.entries('conversation.hero.workspace')).toHaveLength(0)

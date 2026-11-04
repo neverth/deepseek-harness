@@ -72,7 +72,7 @@ export interface SessionNode {
   /** Latest unread completion ended with an execution error. */
   failed: boolean
   /** The main view admitted the completion reminder: it clears only on an explicit acknowledgement. */
-  awaitingAck: boolean
+  awaitingAck?: boolean
   /** Latest user prompt as a projected preview; absent when the Session has none. */
   preview?: string
   /** In the registry-global pin set: leads its section, reorderable only among pinned rows. */
@@ -131,7 +131,7 @@ export interface SearchResultNode {
   /** Latest unread completion ended with an execution error. */
   failed: boolean
   /** The main view admitted the completion reminder: it clears only on an explicit acknowledgement. */
-  awaitingAck: boolean
+  awaitingAck?: boolean
   /** In the registry-global archive set: shown grayed and not openable. */
   archived: boolean
   snippet?: string

@@ -402,10 +402,10 @@ function sessionStatuses(
   return [{ state: 'idle', label: t('status.idle') }]
 }
 
-/** Row marker: solid states paint the row's own 11px core, ongoing keeps the shared spinner. */
+/** Row marker: solid states paint the row's own 11px core; ongoing fills the 16px leading slot. */
 function StatusMarker({ state }: { state: StateDotState }) {
   return state === 'ongoing'
-    ? <StateDot state={state} />
+    ? <StateDot state={state} size={16} className={css.runningStatus} />
     : <span className={css.statusDot} data-state={state} aria-hidden="true" />
 }
 
@@ -513,13 +513,13 @@ function SessionHoverContent({ node, cwd, now, renderSlot, t }: {
  * @returns the result row.
  */
 export function SearchResultItem({
-  result, currentId, onOpen, onUnarchive, onAcknowledge, useSessionAccess, t,
+  result, currentId, onOpen, onUnarchive, onAcknowledge = () => {}, useSessionAccess, t,
 }: {
   result: SearchResultNode
   currentId: string | undefined
   onOpen: (id: SearchResultNode['id']) => void
   onUnarchive: (id: SearchResultNode['id']) => void
-  onAcknowledge: (id: SearchResultNode['id']) => void
+  onAcknowledge?: ((id: SearchResultNode['id']) => void) | undefined
   t: RowTranslate
 } & Pick<WorkspaceBrowserProps, 'useSessionAccess'>) {
   const selected = result.id === currentId
@@ -613,7 +613,7 @@ export function SessionNodeItem({
   now: number
   onOpen: (id: SessionNode['id']) => void
   /** Clear a completion reminder the user confirmed. */
-  onAcknowledge: (id: SessionNode['id']) => void
+  onAcknowledge?: ((id: SessionNode['id']) => void) | undefined
   /** Open the rename dialog from a title double-click (id + current title); see the function JSDoc for the press precondition. */
   onRenameRequest: (id: SessionNode['id'], currentTitle: string) => void
   /** Scroll this row into view after search navigation, then release the reveal request. */
