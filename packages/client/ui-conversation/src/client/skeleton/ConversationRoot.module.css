@@ -228,6 +228,70 @@
   display: none;
 }
 
+/* Narrow header: the current crumb reads in full, so a squeezed row wraps it
+   instead of ellipsizing — leaving one character per line once the action
+   chips (workspace, team, subagents) and utilities take the width. Give the
+   title a full line of its own and let the chips take a second, horizontally
+   scrollable line; the title keeps an ellipsis rather than a vertical strip. */
+@container (max-width: 900px) {
+  .titleCluster {
+    flex-wrap: wrap;
+    row-gap: 2px;
+    align-items: flex-start;
+  }
+
+  .crumbs {
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .crumbSeg {
+    flex: 0 1 auto;
+    overflow: hidden;
+  }
+
+  .crumb {
+    flex: 0 1 auto;
+  }
+
+  .crumbCurrent {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .headerActions {
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    /* The row ends where the trailing controls begin; fade the chip that runs
+       past it instead of cutting it off. Content that fits is untouched. */
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+
+  .headerActions::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* One line of chips that scrolls instead of wrapping into a third row. The
+     slot wrapper is `display: contents`, so its children are this row's flex
+     items; they keep their content width instead of wrapping into columns. */
+  .headerActions > * > * {
+    flex: none;
+  }
+}
+
+/* Phones: the chips cost a line the transcript needs more. The workspace,
+   team and subagent facts stay reachable from the sidebar and session menus. */
+@container (max-width: 480px) {
+  .headerActions {
+    display: none;
+  }
+}
+
 /* The tab row sits above the header paint so the active bar covers its rule. */
 .tabs {
   grid-column: 1 / -1;
@@ -244,9 +308,38 @@
   padding-left: 8px;
 }
 
+/* Phones and tablets keep the header to the title: the reader who wants the
+   view tabs reads on a desktop. The row stays in the DOM so the tab-strip
+   probes keep working; only the regression below changes. */
+@media (max-width: 1024px) {
+  .tabs {
+    display: none;
+  }
+
+  /* Without the tab row the header is a single line again. */
+  .header {
+    min-height: 0;
+    padding-bottom: 10px;
+  }
+}
+
 @media (max-width: 767px) {
   :global(html:not([data-platform])) .tabs {
     padding-left: 0;
+  }
+
+  /* The narrow column spends its width on the title, so the header keeps only
+     the clearance the trailing controls need. */
+  .header {
+    padding-right: 12px;
+  }
+
+  .headerUtilities {
+    margin-left: 8px;
+  }
+
+  .tabs {
+    margin-top: 6px;
   }
 }
 
@@ -659,7 +752,7 @@
 
 /* Narrow columns give the shared width axis the whole column: the 680px floor
    would otherwise overflow it. */
-.root[data-mobile] {
+.body[data-mobile] {
   --dsh-chat-content-width: var(--dsh-conversation-column-width, 100%);
   --dsh-composer-side-clearance: 8px;
 }
@@ -680,7 +773,7 @@
 
    Absolute against the conversation column, so the sheet rides the column's
    visible floor instead of reading any keyboard measurement of its own. */
-.root[data-mobile][data-phase='active'] .composerSeat:not([data-composer-collapsed]) {
+.body[data-mobile][data-content-phase='active'] .composerSeat:not([data-composer-collapsed]) {
   position: absolute;
   right: 0;
   bottom: env(safe-area-inset-bottom, 0px);
@@ -694,14 +787,14 @@
 /* The sheet floats over the scrollport, so the transcript reserves its height
    (published by the seat's ResizeObserver) to keep the last message reachable
    above it. */
-.root[data-mobile][data-phase='active'] .scrollBody:has(.composerSeat:not([data-composer-collapsed])) {
+.body[data-mobile][data-content-phase='active'] .scrollBody:has(.composerSeat:not([data-composer-collapsed])) {
   padding-bottom: var(--dsh-composer-height, 0px);
 }
 
 /* Collapsed, the seat measures zero but the floating "输入" pill still covers
    20px-from-floor + 48px height; reserve that band plus clearance so the last
    message's action row never finishes underneath the pill. */
-.root[data-mobile][data-phase='active'] .scrollBody:has(.composerSeat[data-composer-collapsed]) {
+.body[data-mobile][data-content-phase='active'] .scrollBody:has(.composerSeat[data-composer-collapsed]) {
   padding-bottom: 84px;
 }
 

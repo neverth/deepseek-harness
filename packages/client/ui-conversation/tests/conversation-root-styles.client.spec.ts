@@ -31,7 +31,7 @@ function declarations(selector: string): string[] {
 
 describe('ConversationRoot.module.css mobile regime', () => {
   it('lets the transcript use the whole narrow column', () => {
-    expect(declarations('.root[data-mobile]')).toContain(
+    expect(declarations('.body[data-mobile]')).toContain(
       '--dsh-chat-content-width: var(--dsh-conversation-column-width, 100%)',
     )
   })
@@ -46,14 +46,14 @@ describe('ConversationRoot.module.css mobile regime', () => {
   })
 
   it('floats the open composer over the transcript', () => {
-    const selector = ".root[data-mobile][data-phase='active'] .composerSeat:not([data-composer-collapsed])"
+    const selector = ".body[data-mobile][data-content-phase='active'] .composerSeat:not([data-composer-collapsed])"
     const rules = declarations(selector)
     expect(rules).toContain('position: absolute')
     expect(rules).toContain('bottom: env(safe-area-inset-bottom, 0px)')
   })
 
   it('keeps the last message clear of the collapsed composer floating pill', () => {
-    const selector = ".root[data-mobile][data-phase='active'] .scrollBody:has(.composerSeat[data-composer-collapsed])"
+    const selector = ".body[data-mobile][data-content-phase='active'] .scrollBody:has(.composerSeat[data-composer-collapsed])"
     expect(declarations(selector)).toEqual(['padding-bottom: 84px'])
   })
 })
