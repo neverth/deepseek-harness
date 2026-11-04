@@ -358,9 +358,9 @@ describe('paging', () => {
     await session.open()
     await session.loadOlder()
     const snapshot = session.getSnapshot()
-    expect(mock.log.requests(FOLLOW)).toMatchObject([{ maxMessages: 500, turnWindow: { minMessages: 500, minTurns: 2 } }])
+    expect(mock.log.requests(FOLLOW)).toMatchObject([{ maxMessages: 500, turnWindow: { minMessages: 50, minTurns: 2 } }])
     expect(mock.log.requests(PAGE)).toEqual([
-      { address: ADDRESS, throughSeq: 11, beforeSeq: 6, maxMessages: 500, turnWindow: { minMessages: 500, minTurns: 2 } },
+      { address: ADDRESS, throughSeq: 11, beforeSeq: 6, maxMessages: 500, turnWindow: { minMessages: 50, minTurns: 2 } },
     ])
     expect(snapshot.hasMore).toBe(false)
     expect(eventSeqs(session)).toEqual([...older, ...newer].map(event => event.seq))
@@ -609,8 +609,8 @@ describe('paging', () => {
     expect(snapshot).toMatchObject({ historyLoadStatus: 'idle', loadingOlder: false })
     expect(eventSeqs(session)).toEqual([...oldest, ...middle, ...newest].map(event => event.seq))
     expect(mock.log.requests(PAGE)).toMatchObject([
-      { beforeSeq: 12, maxMessages: 1000, turnWindow: { minMessages: 1000, minTurns: 2 } },
-      { beforeSeq: 6, maxMessages: 1000, turnWindow: { minMessages: 1000, minTurns: 2 } },
+      { beforeSeq: 12, maxMessages: 500, turnWindow: { minMessages: 200, minTurns: 2 } },
+      { beforeSeq: 6, maxMessages: 500, turnWindow: { minMessages: 200, minTurns: 2 } },
     ])
   })
 
@@ -841,7 +841,7 @@ describe('prompt and cancel errors', () => {
   const CHILD = { parentSessionId: PARENT, childSessionId: SID, mode: 'continuable' } as const
 
   it('routes an addressed child through non-activating history, continuation prompt, and interrupt only', async ({ mock, start }) => {
-    const session = await sessionBench(mock, start, SID, { address: CHILD })
+    const session = await sessionBench(mock, start, SID, { address: CHILD, parentAvailable: true })
     await session.open()
     const prompted = await session.prompt([{ type: 'text', text: '继续' }], 'queue')
     const steered = await session.prompt([{ type: 'text', text: '现在处理' }], 'steer')
@@ -851,41 +851,41 @@ describe('prompt and cancel errors', () => {
     expect(steered).toEqual({ ok: true, value: { accepted: true } })
     expect(cancelled).toEqual({ ok: true, value: { accepted: true } })
     expect(mock.log.requests(FOLLOW)).toEqual([
-      { address: { kind: 'subagent', ...CHILD }, activate: true, assistantStream: true, maxMessages: 500, turnWindow: { minMessages: 500, minTurns: 2 } },
+      { address: { kind: 'subagent', ...CHILD }, activate: true, assistantStream: true, maxMessages: 500, turnWindow: { minMessages: 50, minTurns: 2 } },
     ])
     expect(mock.log.requests(PAGE)).toEqual([])
     // The prompt mode crosses the wire as the request's delivery.
     expect(mock.log.requests('subagents/prompt')).toEqual([
       {
         requestId: expect.any(String) as unknown as string,
-        childSessionId: SID,
+        ...CHILD,
         delivery: 'queue',
         content: [{ type: 'text', text: '继续' }],
         clientTimeZone: TIME_ZONE,
       },
       {
         requestId: expect.any(String) as unknown as string,
-        childSessionId: SID,
+        ...CHILD,
         delivery: 'steer',
         content: [{ type: 'text', text: '现在处理' }],
         clientTimeZone: TIME_ZONE,
       },
     ])
     // Positional parameters cross the wire as positional args.
-    expect(mock.log.calls('subagents/interruptByUser').map(call => call.args)).toEqual([[SID]])
+    expect(mock.log.calls('subagents/interruptByParent').map(call => call.args)).toEqual([[SID, PARENT, 'continuable']])
     expect(mock.log.requests('session/prompt')).toEqual([])
     expect(mock.log.requests('session/cancel')).toEqual([])
     // A successful interrupt leaves no stop error behind.
     expect(session.getSnapshot().promptError).toBeNull()
-    expect(session.getSnapshot().subagent).toEqual({ address: CHILD })
+    expect(session.getSnapshot().subagent).toEqual({ address: CHILD, parentAvailable: true })
   })
 
   it('sends an addressed child continuation under its echo request id and retires a refused echo', async ({ mock, start }) => {
-    const session = await sessionBench(mock, start, SID, { address: CHILD })
+    const session = await sessionBench(mock, start, SID, { address: CHILD, parentAvailable: true })
     await session.open()
     const accepted = session.beginSubmission({ mode: 'queue', text: '继续', attachments: [] })
     await session.prompt([{ type: 'text', text: '继续' }], 'queue', undefined, accepted.requestId)
-    expect(mock.log.requests('subagents/prompt')).toMatchObject([{ requestId: accepted.requestId, childSessionId: SID }])
+    expect(mock.log.requests('subagents/prompt')).toMatchObject([{ requestId: accepted.requestId, ...CHILD }])
     expect(session.getSnapshot().pendingSubmissions.map(echo => echo.requestId)).toEqual([accepted.requestId])
 
     const refused = session.beginSubmission({ mode: 'queue', text: '附件', attachments: [] })
@@ -894,7 +894,7 @@ describe('prompt and cancel errors', () => {
   })
 
   it('forwards continuation image parts to the subagent prompt Remote unstripped', async ({ mock, start }) => {
-    const session = await sessionBench(mock, start, SID, { address: CHILD })
+    const session = await sessionBench(mock, start, SID, { address: CHILD, parentAvailable: true })
     await session.open()
     const content = [
       { type: 'text' as const, text: '看这张图' },
@@ -906,7 +906,7 @@ describe('prompt and cancel errors', () => {
     expect(mock.log.requests('subagents/prompt')).toEqual([
       {
         requestId: expect.any(String) as unknown as string,
-        childSessionId: SID,
+        ...CHILD,
         delivery: 'queue',
         content,
         clientTimeZone: TIME_ZONE,
@@ -916,18 +916,18 @@ describe('prompt and cancel errors', () => {
   })
 
   it('lands an interrupt business failure in promptError with op=stop', async ({ mock, start }) => {
-    const session = await sessionBench(mock, start, SID, { address: CHILD })
-    mock.remote.subagents.interruptByUser.mockResolvedValue(err(new RemoteError('remote-access/denied', 'nope', { action: 'subagents/interruptByUser', reason: 'no-allow' })))
+    const session = await sessionBench(mock, start, SID, { address: CHILD, parentAvailable: true })
+    mock.remote.subagents.interruptByParent.mockResolvedValue(err(new RemoteError('subagent/unauthorized', 'nope', { childSessionId: SID })))
     await session.open()
     const cancelled = await session.cancel()
-    expect(cancelled).toMatchObject({ ok: false, error: { code: 'remote-access/denied' } })
+    expect(cancelled).toMatchObject({ ok: false, error: { code: 'subagent/unauthorized' } })
     expect(session.getSnapshot().promptError).toMatchObject({
-      op: 'stop', error: { code: 'remote-access/denied' },
+      op: 'stop', error: { code: 'subagent/unauthorized' },
     })
   })
 
   it('rejects staged files instead of dropping them from subagent continuations', async ({ mock, start }) => {
-    const session = await sessionBench(mock, start, SID, { address: CHILD })
+    const session = await sessionBench(mock, start, SID, { address: CHILD, parentAvailable: true })
     await session.open()
 
     const prompted = await session.prompt([
@@ -945,7 +945,7 @@ describe('prompt and cancel errors', () => {
     expect(mock.log.requests('subagents/prompt')).toEqual([])
   })
 
-  it('lets the Host validate the target continuation state', async ({ mock, start }) => {
+  it('sends a one-shot address to the Host under the continuable marker', async ({ mock, start }) => {
     const session = await sessionBench(mock, start, SID, { address: { ...CHILD, mode: 'one-shot' } })
     mock.remote.subagents.prompt.mockResolvedValue(err(new RemoteError(
       'subagent/not-resumable', 'subagent cannot be resumed', { childSessionId: SID },
@@ -954,12 +954,13 @@ describe('prompt and cancel errors', () => {
     const prompted = await session.prompt([{ type: 'text', text: '继续' }], 'queue')
     const cancelled = await session.cancel()
 
+    // The Host reads the durable descriptor; the wire marker stays 'continuable'.
     expect(prompted).toMatchObject({ ok: false, error: { code: 'subagent/not-resumable' } })
     expect(cancelled).toEqual({ ok: true, value: { accepted: true } })
-    expect(mock.log.requests('subagents/prompt')).toMatchObject([{ childSessionId: SID }])
-    expect(mock.log.calls('subagents/interruptByUser').map(call => call.args)).toEqual([[SID]])
+    expect(mock.log.requests('subagents/prompt')).toMatchObject([CHILD])
+    expect(mock.log.calls('subagents/interruptByParent').map(call => call.args)).toEqual([[SID, PARENT, 'continuable']])
     expect(mock.log.requests(FOLLOW)).toEqual([
-      { address: { kind: 'subagent', ...CHILD, mode: 'one-shot' }, activate: true, assistantStream: true, maxMessages: 500, turnWindow: { minMessages: 500, minTurns: 2 } },
+      { address: { kind: 'subagent', ...CHILD, mode: 'one-shot' }, activate: true, assistantStream: true, maxMessages: 500, turnWindow: { minMessages: 50, minTurns: 2 } },
     ])
     expect(mock.log.requests(PAGE)).toEqual([])
     expect(mock.log.requests('session/cancel')).toEqual([])
