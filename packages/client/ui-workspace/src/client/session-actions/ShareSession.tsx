@@ -9,9 +9,12 @@ import type { SessionMenuItemProps, ShareSessionInjected } from '../contract/slo
  * @returns the row.
  */
 export function ShareSessionMenuItem({
-  sessionId, useMenuOpenState, shareSession, t,
+  sessionId, useMenuOpenState, useRemoteAccess, shareSession, t,
 }: SessionMenuItemProps<ShareSessionInjected>) {
   const [, setMenuOpen] = useMenuOpenState()
+  // Sharing is an owner surface: a share viewer renders the shipped row menu
+  // under its own endpoint snapshot and must not walk further out.
+  if (!useRemoteAccess('session/create')) return null
   return (
     <MenuItemButton
       icon={<IconShareOutlineRegular />}
