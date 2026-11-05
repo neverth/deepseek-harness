@@ -861,9 +861,8 @@ type CustomGroupTreeProps = Pick<
   onSessionRenameRequest: (sessionId: SessionNode['id'], currentTitle: string) => void
   revealSessionId?: SessionId | undefined
   onSessionRevealed: (sessionId: SessionId) => void
-  /** Session/Workspace menu bindings the rows share with the grouped tree. */
-  openSessionMenu: WorkspaceBrowserProps['openSessionMenu']
-  openWorkspaceMenu: WorkspaceBrowserProps['openWorkspaceMenu']
+  /** Structured menu bindings the rows share with the grouped tree. */
+  renderFactorySlot: WorkspaceBrowserProps['renderFactorySlot']
   useContextMenuTarget: WorkspaceBrowserProps['useContextMenuTarget']
   useContextMenu: WorkspaceBrowserProps['useContextMenu']
 }
@@ -897,7 +896,7 @@ function CustomGroupTree({
   setSessionOrder, moveCustomMember, moveCustomGroup, workspaceReady, animationResetKey,
   groupExpansion, setGroupExpanded, onRenameGroup, onDeleteGroup,
   revealSessionId, onSessionRevealed, renderSlot, home, t,
-  openSessionMenu, openWorkspaceMenu, useContextMenuTarget, useContextMenu,
+  renderFactorySlot, useContextMenuTarget, useContextMenu,
 }: CustomGroupTreeProps) {
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
   const statuses = useSessionStatus(s => s)
@@ -1088,7 +1087,7 @@ function CustomGroupTree({
           useWorkspaceAccess={useWorkspaceAccess}
           t={t}
           drag={orderDragProps}
-          openWorkspaceMenu={openWorkspaceMenu}
+          renderFactorySlot={renderFactorySlot}
           useContextMenuTarget={useContextMenuTarget}
           useContextMenu={useContextMenu}
           onToggle={() => {
@@ -1120,7 +1119,7 @@ function CustomGroupTree({
                   onRenameRequest={onSessionRenameRequest}
                   onAcknowledge={onAcknowledge}
                   renderSlot={renderSlot}
-                  openSessionMenu={openSessionMenu}
+                  renderFactorySlot={renderFactorySlot}
                   useContextMenuTarget={useContextMenuTarget}
                   useContextMenu={useContextMenu}
                   onReveal={node.id === revealSessionId && section.key === revealGroup
