@@ -1079,6 +1079,10 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  SessionTitleRefreshRequest: 'title refresh request is owned by packages/api/session-controller/src/types.ts',
+  SessionTitleRefreshValue: 'title refresh result is owned by packages/api/session-controller/src/types.ts',
+  WorkspaceViewSnapshot: 'workspace view backup document is owned by packages/api/workspace-controller/src/types.ts',
+  WorkspaceViewSnapshotRequest: 'workspace view backup write is owned by packages/api/workspace-controller/src/types.ts',
   AnyConnectorAccountView: 'generic connector account view is owned by packages/client/ui-connector-account/README.md',
   ConnectorAccountRegistration: 'Plugins page account registration is owned by packages/client/ui-connector-account/README.md',
   ConnectorAccountsView: 'registered account stream item is owned by packages/client/ui-connector-account/README.md',

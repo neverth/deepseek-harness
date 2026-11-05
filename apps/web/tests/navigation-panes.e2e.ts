@@ -446,7 +446,7 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
       await page.getByRole('dialog', { name: 'Session download started' }).waitFor({ timeout: 30_000 })
       await page.getByRole('dialog', { name: 'Session download started' })
         .getByText('Close', { exact: true }).click()
-      await observer.getByText('Session log download requested.', { exact: true }).waitFor({ timeout: 30_000 })
+      await observer.getByText('Session log download requested.', { exact: true }).last().waitFor({ timeout: 30_000 })
       expect(observerDownloads).toBe(0)
       expect(await observer.getByRole('dialog', { name: 'Session download started' }).count()).toBe(0)
       expect({

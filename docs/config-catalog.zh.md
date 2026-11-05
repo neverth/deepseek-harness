@@ -254,7 +254,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-session-controller`
 
 - `inject`: `agentDefaultModel` · `agents` · `attachments` · `fileUploads` · `fs` · `llm` · `remoteAccess` · `sessions` · `sessionProjections` · `sessionQuery` · `typert` · `typertGateway` · `workspaceRegistry`
-- `source`: [`packages/api/session-controller/src/index.ts:83`](../packages/api/session-controller/src/index.ts)
+- `source`: [`packages/api/session-controller/src/index.ts:85`](../packages/api/session-controller/src/index.ts)
 
 ```ts config-catalog
 /** Session Controller deployment policy. */
@@ -339,8 +339,8 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-api-workspace-controller`
 
-- `inject`: `remoteAccess` · `typert` · `workspaceRegistry`
-- `source`: [`packages/api/workspace-controller/src/index.ts:37`](../packages/api/workspace-controller/src/index.ts)
+- `inject`: `remoteAccess` · `typert` · `workspaceRegistry` · `storageDomain`
+- `source`: [`packages/api/workspace-controller/src/index.ts:41`](../packages/api/workspace-controller/src/index.ts)
 
 ```ts config-catalog
 /** First-use directory policy for the Host account. */
@@ -520,6 +520,16 @@ export interface ConnectionConfig {
    * an entry here. A non-canonical or non-bare authority fails plugin load.
    */
   trustedHosts?: string[]
+  /**
+   * Whether `/api` and the index require the process token or a signed
+   * browser-session cookie. Default: true.
+   *
+   * False serves every request the Host/Origin fence already trusts, so any
+   * host that can reach the bind drives this agent with the launching
+   * account's permissions. Only a deployment whose network reachability is
+   * itself the access control may turn it off.
+   */
+  requireBrowserAuth?: boolean
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
 }
@@ -1901,13 +1911,20 @@ export interface Config {
 ## `@deepseek-ai/dsh-host-frontend-static`
 
 - `inject`: `webServer` · `connection`
-- `source`: [`packages/host/frontend-static/src/index.ts:34`](../packages/host/frontend-static/src/index.ts)
+- `source`: [`packages/host/frontend-static/src/index.ts:55`](../packages/host/frontend-static/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: the dist anchor. */
 export interface Config {
   /** Absolute path of index.html inside the dist root. */
   distIndex: string
+  /**
+   * Optional secret path segment gating the SPA index. When set, the index
+   * renders only for a request carrying the matching gate cookie; visiting
+   * `/<secretPath>` sets that cookie and redirects to the clean root. Bare `/`
+   * without it returns 404 (no page). Unset leaves the index ungated.
+   */
+  secretPath?: string
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-host-frontend-static -->

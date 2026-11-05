@@ -57,7 +57,8 @@ export function registerSessionMenus(ctx: Context, actions: Actions): void {
     // Archived rows hide reminders and read as read, so they offer no reading mark.
     if (archived(target) || !allowed(target, 'sessionStatus/mark')) return []
     const status = ctx.uiSession.sessionStatus
-    const unread = status.getSnapshot().get(target.sessionId)?.completionUnread === true
+    const current = status.getSnapshot().get(target.sessionId)
+    const unread = current?.completionUnread === true || current?.completionPendingAck === true
     return [{
       id: 'mark', label: t(unread ? 'menu.markRead' : 'menu.markUnread'),
       icon: { key: unread ? 'workspace.markRead' : 'workspace.markUnread' },

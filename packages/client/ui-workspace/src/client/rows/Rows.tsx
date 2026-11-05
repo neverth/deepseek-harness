@@ -9,8 +9,7 @@
  * `sidebar.workspaces.session.row.action` list. Session and Workspace
  * hover cards are suppressed while their menu is open.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { PointerEvent, RefObject } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import {

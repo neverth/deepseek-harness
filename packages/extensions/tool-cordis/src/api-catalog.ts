@@ -3215,6 +3215,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the accepted title and durable event sequence.',
       },
       {
+        signature: '@Remote(\'refreshTitle\') refreshTitle(request: SessionTitleRefreshRequest): Promise<SessionTitleRefreshValue>',
+        description: 'Regenerate one Session\'s title from its conversation after explicitly resuming it. The registered provider decides the outcome; a user rename stays pinned.',
+        parameters: [{ name: 'request', description: 'Session identity.' }],
+        returns: 'the accepted title and durable event sequence, or an empty value.',
+      },
+      {
         signature: '@Remote(\'fork\') async fork(request: SessionForkRequest): Promise<SessionForkValue>',
         description: 'Fork one cold-readable exact event prefix into a new Session. An omitted boundary selects the latest completed-turn prefix; an open cut receives synthetic fork closers.',
         parameters: [{ name: 'request', description: 'source Session, optional exact inclusive event boundary, and migration preflight choice.' }],
@@ -5107,6 +5113,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Remove one Session\'s pin without changing its saved Session order.',
         parameters: [{ name: 'request', description: 'Session identity to unpin.' }],
         returns: 'the complete resulting pin set, most recently pinned first.',
+      },
+      {
+        signature: '@Remote(\'saveViewSnapshot\') saveViewSnapshot(request: WorkspaceViewSnapshotRequest): Promise<WorkspaceViewSnapshot | undefined>',
+        description: 'Store one snapshot of a client\'s sidebar view document when it changed, keeping only the newest changed states.',
+        parameters: [{ name: 'request', description: 'the pushing client\'s complete document.' }],
+        returns: 'the stored snapshot, or undefined when it repeats the newest one.',
       },
       {
         signature: '@Remote({ mode: \'stream\' }) async *follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame>',
@@ -10032,6 +10044,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionTitleProviderResult {\n    readonly title: string;\n    readonly messageSeqs: readonly SessionSeq[];\n    readonly model?: SessionTitleModelIdentity;\n}',
   },
   {
+    name: 'SessionTitleRefreshRequest',
+    declaration: 'export interface SessionTitleRefreshRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'SessionTitleRefreshValue',
+    declaration: 'export interface SessionTitleRefreshValue {\n    readonly title?: string;\n    readonly seq?: number;\n}',
+  },
+  {
     name: 'SessionTitleSnapshot',
     declaration: 'export interface SessionTitleSnapshot extends SessionTitleEventData {\n    readonly eventSeq: SessionSeq;\n    readonly updatedAt: number;\n}',
   },
@@ -11574,6 +11594,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceView',
     declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+  },
+  {
+    name: 'WorkspaceViewDocument',
+    declaration: 'export type WorkspaceViewDocument = z.infer<typeof viewDocument>;',
+  },
+  {
+    name: 'WorkspaceViewSnapshot',
+    declaration: 'export type WorkspaceViewSnapshot = z.infer<typeof viewSnapshot>;',
+  },
+  {
+    name: 'WorkspaceViewSnapshotRequest',
+    declaration: 'export interface WorkspaceViewSnapshotRequest {\n    readonly document: WorkspaceViewDocument;\n}',
   },
   {
     name: 'WorktreeCleanup',

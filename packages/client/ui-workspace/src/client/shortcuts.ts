@@ -139,7 +139,8 @@ export function installWorkspaceShortcuts(
       }
       const status = ctx.uiSession.sessionStatus
       if (!status.readingReady.getSnapshot()) return { status: 'blocked', reason: t('shortcut.readingUnavailable') }
-      const unread = status.getSnapshot().get(target.id)?.completionUnread === true
+      const currentStatus = status.getSnapshot().get(target.id)
+      const unread = currentStatus?.completionUnread === true || currentStatus?.completionPendingAck === true
       return { status: 'handled', run: () => { markSession(target.id, !unread) } }
     },
   }), 'ui-workspace: session.toggleRead')

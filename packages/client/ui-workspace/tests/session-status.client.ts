@@ -21,13 +21,14 @@ export function provideSessionStatus(ctx: Context) {
     subscribe: (listener: () => void) => table.subscribe(listener),
     readingReady,
     mark,
+    acknowledgeCompletion: vi.fn(),
   }
   ctx.provide('uiSession', { sessionStatus } as never)
   ctx.provide('uiSession.sessionStatus', sessionStatus as never)
   const setUnread = (sessionId: SessionId, unread: boolean): void => {
     table.set(new Map([[sessionId, {
-      running: false, pendingInteraction: undefined, completionUnread: unread, completionFailed: false,
+      running: false, pendingInteraction: undefined, completionUnread: unread, completionPendingAck: false, completionFailed: false,
     }]]))
   }
-  return { table, readingReady, mark, setUnread }
+  return { table, readingReady, mark, setUnread, acknowledgeCompletion: sessionStatus.acknowledgeCompletion }
 }

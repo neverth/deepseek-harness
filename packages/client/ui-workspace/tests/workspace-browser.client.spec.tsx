@@ -970,7 +970,7 @@ describe('WorkspaceBrowser', () => {
           pendingInteraction: { key: 'question:1', kind: 'question', sessionId: sid('session-57') } as SessionPendingInteraction,
         }],
         [sid('session-58'), {
-          running: false, pendingInteraction: undefined, completionUnread: false, completionPendingAck: true,
+          running: false, pendingInteraction: undefined, completionUnread: false, completionPendingAck: true, completionFailed: false,
         }],
       ])),
     })
@@ -3012,7 +3012,7 @@ describe('custom grouping', () => {
   it('shows every pending completion reminder beyond the default custom-group rows', () => {
     const items = Array.from({ length: 10 }, (_, index) => summary(`session-${index + 1}`, 10 - index))
     const status = (): SessionStatus => ({
-      running: false, pendingInteraction: undefined, completionUnread: false, completionPendingAck: true,
+      running: false, pendingInteraction: undefined, completionUnread: false, completionPendingAck: true, completionFailed: false,
     })
     const b = mountCustom({
       useSessions: hook(sessionState(items)),

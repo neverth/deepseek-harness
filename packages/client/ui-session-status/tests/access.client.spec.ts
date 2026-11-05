@@ -146,7 +146,7 @@ it('keeps a quick re-grant\'s records and readiness while the revoked stream dra
   b.allowed.set(true)
   const second = b.streams[1]!
   second.push({ type: 'baseline', items: [record('granted')] })
-  await vi.waitFor(() => { expect(b.status.getSnapshot().get('granted' as SessionId)?.completionUnread).toBe(true) })
+  await vi.waitFor(() => { expect(b.status.reading.state.getSnapshot().items['granted' as SessionId]).toEqual(record('granted')) })
   first.push({ type: 'changed', state: record('revoked') })
   first.end()
   await vi.waitFor(() => { expect(first.state.finished).toBe(true) })

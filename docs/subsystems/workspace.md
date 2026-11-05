@@ -431,6 +431,14 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('unpinSession') unpinSession(request: WorkspaceUnpinSessionRequest): Promise<WorkspacePinValue>
 
 /**
+ * Store one snapshot of a client's sidebar view document when it changed,
+ * keeping only the newest changed states.
+ * @param request - the pushing client's complete document.
+ * @returns the stored snapshot, or undefined when it repeats the newest one.
+ */
+@Remote('saveViewSnapshot') saveViewSnapshot(request: WorkspaceViewSnapshotRequest): Promise<WorkspaceViewSnapshot | undefined>
+
+/**
  * Stream a complete Workspace baseline followed by ordered increments. A
  * non-owner receives only the Workspaces and Sessions `allows()` admits.
  * When a delivered Workspace is no longer admitted at its next change or

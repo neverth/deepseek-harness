@@ -1,6 +1,6 @@
 - tree "Sessions":
   - treeitem "{{workspace}}" [expanded]
   - treeitem "New Session" [selected]
-  - treeitem "Newest conversation now"
-  - treeitem "Middle conversation 1min"
-  - treeitem "Oldest conversation 2min"
+  - 'treeitem "Newest conversation Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop. now"'
+  - 'treeitem "Middle conversation Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop. 1min"'
+  - 'treeitem "Oldest conversation Use the read tool twice in one assistant message: read a.txt and b.txt. Then reply with the single word DONE and stop. 2min"'

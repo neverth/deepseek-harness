@@ -1077,6 +1077,7 @@ describe('web e2e: New Session after an outdated blank cache', () => {
       await page.getByRole('tab', { name: 'Chat', exact: true }).waitFor()
       await expect.poll(() => selected.innerText()).not.toBe('New Session')
       const previous = (await selected.innerText()).split('\n')[0]!
+      await page.getByRole('button', { name: 'View options', exact: true }).hover()
       const before = await captureStableAria(page, '[role="tree"]', scaffold.workspaceCwd)
 
       const creation = page.waitForResponse('**/api/session/create')

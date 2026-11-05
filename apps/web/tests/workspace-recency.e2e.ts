@@ -71,6 +71,7 @@ describe('web e2e: workspace recency', () => {
       localStorage.setItem('dsh.workspace.view.v6', JSON.stringify({
         groupBy: 'workspace', orderBy: 'updated', groupExpansion: { [account]: true },
         sessionOrderByAccount: { [account]: [...ids].reverse(), __flat_session_order__: [...ids].reverse() },
+        customGroups: [], customMembers: {}, customGroupSeq: 0, archivedFilter: 'default',
       }))
     }, { account: workspace.id, ids })
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
@@ -103,6 +104,7 @@ describe('web e2e: workspace recency', () => {
     await expect.poll(titles).toEqual(TITLES)
     await pick('Last updated')
     await expect.poll(titles).toEqual(TITLES)
+    await pick('Manual')
     const source = page.getByRole('treeitem').filter({ has: page.getByText(TITLES[2]!, { exact: true }) })
     const target = page.getByRole('treeitem').filter({ has: page.getByText(TITLES[0]!, { exact: true }) })
     await source.dragTo(target, { targetPosition: { x: 30, y: 3 } })

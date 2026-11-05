@@ -520,7 +520,7 @@ describe('UiWorkspaceService', () => {
     expect(live('a')).toBe(false)
     b.sessions.list.set(sessionState([summary('c')]))
     expect(live('b')).toBe(false)
-    b.status.set(new Map([[sid('c'), { running: true, pendingInteraction: undefined, completionUnread: false, completionFailed: false }]]))
+    b.status.set(new Map([[sid('c'), { running: true, pendingInteraction: undefined, completionUnread: false, completionPendingAck: false, completionFailed: false }]]))
     await b.ctx.fiber.dispose()
     expect(b.sessions.list.listenersSnapshot()).toHaveLength(0)
     expect(b.workspaces.list.listenersSnapshot()).toHaveLength(0)

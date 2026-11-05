@@ -1,5 +1,5 @@
 ---
-description: "Client Session status table and useSessionStatus hook over Host reading records: running state, the effective pending interaction, and read or unread reminders shared by clients of one running Host."
+description: "Client Session status table and useSessionStatus hook: running state, the effective pending interaction, persistent completion reminders, and shared manual reading marks."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Show each Session's running state, highest-precedence pending interaction, and read or unread reminder from one Client status table. Reminders come from reading records this package keeps in Host memory: they survive a browser refresh while the Host remains running, and connected clients share manual marks and acknowledgements, including completions that occur while every client is offline. Reading marks do not change conversation history or model requests.
+Show each Session's running state, highest-precedence pending interaction, and completion reminder from one Client status table. Observed completion reminders persist in browser storage across page reloads and Host restarts until explicit confirmation or the next run. Connected clients share manual reading marks through Host memory. Reading marks do not change conversation history or model requests.
 
 ## Table of Contents
 
@@ -25,9 +25,9 @@ Show each Session's running state, highest-precedence pending interaction, and r
 <a id="use-this-package"></a>
 ## Use this package
 
-The Web bundle's single `ui-session-status` row loads both faces: the Host reading service `ctx.sessionStatus` and, after [`dsh-client-ui-session`](../ui-session/README.md), the Client plugin, which the Web client requires at startup. A composition without this package has no status table and no `useSessionStatus` hook, and profiles without the Web bundle run no reading service. The package has no configuration fields or persistent storage. Restarting the Host or reloading this plugin discards every record: history reads as read again, and no earlier turn outcome survives.
+The Web bundle's single `ui-session-status` row loads both faces: the Host reading service `ctx.sessionStatus` and, after [`dsh-client-ui-session`](../ui-session/README.md), the Client plugin, which the Web client requires at startup. A composition without this package has no status table and no `useSessionStatus` hook, and profiles without the Web bundle run no reading service. The package has no configuration fields. Browser completion reminders use the `dsh.session-completion-unread.v1` and `dsh.session-completion-pending-ack.v1` local storage keys; Host reading records are held in memory.
 
-Use the Session row menu to **Mark as read** or **Mark as unread**. All clients connected to that Host share the result; a failed operation leaves the previous reminder visible and reports failure. A completed, failed, or cancelled turn creates an unread reminder. Existing history starts read when first observed. Opening a Session in a visible, focused main view acknowledges its loaded completion after a rendering frame. Switching the main view to a Session, including restoring it after a page reload, clears its existing manual reminder after the content arrives. Window focus and further activity in the open Session preserve manual unread. Unread reminders do not imply task success and remain independent of running and pending-interaction status.
+Use the Session row menu to **Mark as read** or **Mark as unread**. All clients connected to that Host share manual marks; a failed operation leaves the previous reminder visible and reports failure. An observed running-to-idle transition creates an unread completion reminder. Opening its main view changes that reminder to pending confirmation, displayed in yellow by the workspace browser. Explicit confirmation clears it; focus, view switches, page reloads, and Host restarts preserve it. A new run clears both completion reminder states. Existing history starts read unless a stored reminder or manual mark applies. Unread reminders do not imply task success and remain independent of running and pending-interaction status.
 
 Components read the status table through the `useSessionStatus` root hook. A Client plugin that reads `ctx.uiSession.sessionStatus` adds `'uiSession'` and `'uiSession.sessionStatus'` to its `inject` list; without them, Cordis rejects the property read. A plugin whose components call `useSessionStatus` injects `'uiSession.sessionStatus'` as well, so the plugin unloads and reloads with the hook. The member is declared on ui-session's `UiSessionService`, the type of `ctx.uiSession`; a value annotated as the `UiSession` class does not show it.
 
@@ -35,15 +35,17 @@ Components read the status table through the `useSessionStatus` root hook. A Cli
 |---|---|
 | `getSnapshot()` / `subscribe(listener)` | Status by Session identity; the snapshot keeps its reference until a status fact changes, and a throwing listener is reported without stopping later listeners |
 | `mark(sessionId, unread)` | Mark a Session read or unread; rejects while reading is not synchronized or when the Host rejects the mark |
+| `acknowledgeCompletion(sessionId)` | Explicitly clear an observed completion reminder; a manual unread mark requires a confirmed Host write |
 | `readingReady` | Whether the current Host reading baseline has arrived |
 
-Each `SessionStatus` has four fields:
+Each `SessionStatus` has five fields:
 
 | Field | Source |
 |---|---|
 | `running` | Host Session list baselines and `api-session/status` events; absent until either establishes it. Subagent catalog rows and retained subagent fallback rows do not establish it. |
 | `pendingInteraction` | The same object `ctx.uiSession.pendingInteractions` publishes for that Session. Domain plugins register requests through `ctx.uiSession.registerPendingInteraction(precedence)`. |
-| `completionUnread` | The Host reading record carries a manual unread mark, or its latest completed turn is beyond the read turn; that unacknowledged turn is not shown while the visible, focused main view retains the Session and it is open |
+| `completionUnread` | A locally observed completion has not been opened in the main view, or the Host reading record carries a manual unread mark |
+| `completionPendingAck` | The main view opened an observed completion whose reminder still needs explicit confirmation |
 | `completionFailed` | The Session is unread and its latest completed turn ended with an execution error this Host observed |
 
 The Host face serves the `sessionStatus` Remote namespace with `mark` and `follow`; its failures use `session-status/not-found` and `session-status/unavailable`. The Client keeps its copy of the reading records private: no Client service other than `ctx.uiSession.sessionStatus` exposes them.
@@ -62,7 +64,7 @@ The Client submits the completed turn it has seen. The Host advances `readTurn` 
 
 Only the ordered subscription updates Client records; mutation replies report success or failure. Streams send an accessible baseline followed by whole-record changes. The Client follows them through `ctx.remote.$stream` and the Gateway's `RemoteSnapshotStream` only while `ctx.remoteAccess` allows `sessionStatus/follow`, so a LiveShare viewer opens no stream and keeps `readingReady` false; a normal stream end returns an error with the Gateway's `gateway/carrier-lost` code, so the stream reconnects and the next baseline replaces the records. The existing access stream ends a reading generation when grants change, so reconnecting clients receive a fresh baseline. Disposal closes followers and discards records; pending metadata lookups cannot commit afterward.
 
-The Client plugin combines Session list baselines, `api-session/status` events, ui-session's pending interactions, and reading records into the status table, provided as `uiSession.sessionStatus` beneath `ctx.uiSession`. It also acknowledges the Session retained by the main view. It waits for a visible, focused window, an open Session, a rendering frame, and a loaded body that reaches the completed turn. Window focus only advances the natural read position. When the main view switches to a different Session, the plugin checks that Session's manual unread mark once the reading baseline is ready and clears an existing mark with the next acknowledgement; a replaced binding for the same Session is not a switch, and later acknowledgements keep manual marks.
+The Client plugin combines Session list baselines, `api-session/status` events, ui-session's pending interactions, local completion reminders, and Host manual marks into the status table, provided as `uiSession.sessionStatus` beneath `ctx.uiSession`. Main-view retention moves a local unread reminder to pending confirmation. The Client installs no automatic reading acknowledgement. A ready catalog removes local reminders for absent Session identities.
 
 </details>
 
@@ -92,13 +94,13 @@ None; reading marks and the status table do not assemble model requests.
 
 Reading state has these operational limits:
 
-- **Concurrent explicit marks** — the last action processed by the Host wins. Delayed explicit read actions can clear a newer manual unread mark; there is no revision comparison. Automatic acknowledgements (`acknowledge`) never clear manual unread or read beyond their submitted position. The only automatic path that clears manual unread is the main-view switch rule above, including restoring the main view after a page reload; it applies only when that page is visible, focused, and showing the Session.
+- **Concurrent explicit marks** — the last action processed by the Host wins. Delayed explicit read actions can clear a newer manual unread mark; there is no revision comparison.
 - **One Host process** — separate Host processes or machines do not synchronize with each other.
-- **Host restart or plugin reload** — all reading state resets and history reads as read. A turn that failed before the restart keeps no outcome, so marking such a Session unread shows the ordinary unread reminder. Reloading the Host plugin ends every reading stream; if the replacement service is not yet serving when the Client reconnects, the Client receives a terminal error, disables reading commands, and recovers only after a page reload. Persistent reminders require the separately tracked follow-up; this package writes no read-state files.
+- **Host restart or plugin reload** — Host reading records reset, including manual marks and failure metadata; local completion reminders remain. A turn that failed before the restart keeps no outcome, so its reminder shows the ordinary completion state. Reloading the Host plugin ends every reading stream; if the replacement service is not yet serving when the Client reconnects, the Client receives a terminal error, disables reading commands, and recovers only after a page reload.
+- **Browser storage and offline completion** — blocked or full storage keeps reminders only in memory. Local completion reminders are browser-specific and require an observed running-to-idle transition; a completion while the browser is disconnected does not establish a local reminder.
 - **Web profiles only** — the row lives in the Web bundle, so profiles without it run no reading service.
 - **Metadata and transport failures** — a failed metadata lookup leaves reading state unchanged. A terminal stream or protocol failure disables reading commands until the page reloads; ordinary carrier loss reconnects automatically.
 - **Unloaded and archived Sessions** — records for Sessions unloaded from memory remain until the service stops; reclaiming them requires a Session deletion lifecycle. Archived rows hide their unread styling and status, read as read, and offer no reading mark in the row menu or shortcut.
-- **Main-view visibility** — main-view retention does not distinguish every settings or auxiliary panel, so acknowledgement can run, and the status table hides the open Session's unacknowledged completion, while such a panel covers the Conversation; that refinement belongs to the notification work.
 - **No message counts or read receipts for other people** — the state belongs to the Host's owner and records Session-level reminders. LiveShare viewers cannot read or change it.
 
 <a id="dev-note"></a>

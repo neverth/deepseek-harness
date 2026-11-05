@@ -176,6 +176,9 @@ describe('native row drag previews', () => {
       : <SessionNodeItem node={{
         id: sid('session'), title: 'Draggable row', blank: false, running: false,
         runningSubagentCount: 0, completed: false, failed: false, updatedAt: 0, pinned: false, archived: false,
+      }} currentId={undefined} now={0} onOpen={vi.fn()} drag={drag} t={t} />)
+    const row = screen.getByRole('treeitem')
+    stubRect(row)
     row.style.paddingInlineStart = '32px'
     const transfer = {
       effectAllowed: '', setData: vi.fn(),
@@ -235,6 +238,7 @@ describe('native row drag previews', () => {
     const image = start()
     rerender(<SessionNodeItem node={{
       id: sid('session'), title: 'Draggable row', blank: false, running: false,
+      runningSubagentCount: 0, completed: false, failed: false, updatedAt: 0, pinned: false, archived: true,
     }} currentId={undefined} now={0} onOpen={vi.fn()} drag={drag} t={t} />)
     expect(row.getAttribute('draggable')).toBe('false')
     fireEvent.dragEnd(row)
@@ -266,14 +270,14 @@ describe('workspace browser rows', () => {
     const view = render(<SessionNodeItem node={idle} currentId={undefined} now={0} onOpen={vi.fn()} t={t} />)
     // The cell is the row's first element and holds nothing while the row is
     // idle without an occupant; the title, whose text sits in an inner span, follows it.
-    const cell = screen.getByText('Flat Session').parentElement?.previousElementSibling
+    const cell = screen.getByRole('treeitem').firstElementChild
     expect(cell?.className).toMatch(/slot/)
     expect(cell?.children).toHaveLength(0)
 
     view.rerender(<SessionNodeItem node={{ ...idle, running: true }} currentId={undefined} now={0}
       onOpen={vi.fn()} t={t} />)
     // A row that gains a state dot keeps that dot in the same cell.
-    expect(screen.getByText('Flat Session').parentElement?.previousElementSibling?.querySelector('[data-state="ongoing"]')).toBeTruthy()
+    expect(cell?.querySelector('[data-state="ongoing"]')).toBeTruthy()
   })
 
   it('renders a selected content-search row and opens only its session', () => {
@@ -856,10 +860,7 @@ describe('workspace browser rows', () => {
   describe('Session hover-card working directory', () => {
     const located: SessionNode = {
       id: sid('s-cwd'), title: 'Located', blank: false, running: false,
-      runningSubagentCount: 0, completed: false, failed: false, updatedAt: 0, pinned: false, archived: false,
-=======
-      runningSubagentCount: 0, completed: false, awaitingAck: false, updatedAt: 0, pinned: false, archived: false,
->>>>>>> 3f0ff367f7 (feat(ui-workspace): 分组拖拽按排序模式收口并保持完成提醒可见)
+      runningSubagentCount: 0, completed: false, failed: false, awaitingAck: false, updatedAt: 0, pinned: false, archived: false,
       cwd: '/home/u/project',
     }
     function hoverCard(node: SessionNode): void {
@@ -1096,7 +1097,7 @@ describe('workspace browser rows', () => {
     }
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()} t={tEn} />)
     const row = screen.getByRole('treeitem')
-    expect(screen.getByText('Needs input').parentElement?.nextElementSibling?.textContent).toBe(compactLabel)
+    expect(row.children[2]?.textContent).toBe(compactLabel)
     expect(screen.getByText(compactLabel).getAttribute('aria-hidden')).toBe('true')
     expect(row.textContent).not.toContain('now')
   })
@@ -1118,7 +1119,7 @@ describe('workspace browser rows', () => {
     }
   })
 
-  it('unread hover card identifies the reminder without claiming successful completion', () => {
+  it('unread hover card identifies the observed completion', () => {
     vi.useFakeTimers()
     try {
       const node: SessionNode = {
@@ -1129,7 +1130,7 @@ describe('workspace browser rows', () => {
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
       act(() => { vi.advanceTimersByTime(800) })
       // Row's visually-hidden reminder label plus the hover card's status line.
-      expect(screen.getAllByText('未读')).toHaveLength(2)
+      expect(screen.getAllByText('已完成')).toHaveLength(2)
     } finally {
       vi.useRealTimers()
     }
@@ -1223,7 +1224,6 @@ describe('workspace browser rows', () => {
     const drag = dragProps({ active: true, marker: 'before' })
     render(<SessionNodeItem node={{
       id: sid('not-draggable'), title: 'Not draggable', blank: state === 'blank', running: false,
-<<<<<<< HEAD
       runningSubagentCount: 0, completed: false, failed: false, updatedAt: 0, pinned: false, archived: state === 'archived',
     }} currentId={undefined} now={0} onOpen={vi.fn()} drag={drag} t={t} />)
     const row = screen.getByRole('treeitem')

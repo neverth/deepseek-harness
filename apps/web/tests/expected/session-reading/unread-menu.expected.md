@@ -5,6 +5,7 @@
   - menuitem "Fork session"
   - separator
   - menuitem "Copy Session ID"
+  - menuitem "Share"
   - separator
   - menuitem "Archive session"
 Row state: done

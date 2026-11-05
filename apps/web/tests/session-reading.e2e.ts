@@ -57,10 +57,10 @@ async function mark(page: Page, name: 'Mark as read' | 'Mark as unread', id = se
 }
 
 async function unread(page: Page): Promise<number> {
-  return page.locator(`[data-row-key="session:${sessionId}"]`).getByText('Unread', { exact: true }).count()
+  return page.locator(`[data-row-key="session:${sessionId}"]`).locator('[data-state="done"]').count()
 }
 
-it('synchronizes manual marks, retains them across reload, and acknowledges only on a new view entry', async () => {
+it('synchronizes manual marks and preserves them across reload and main-view entry until explicit confirmation', async () => {
   onTestFailed(() => saveFailureShot(first, 'session-reading'))
   const left = watchConsole(first)
   const right = watchConsole(second)
@@ -90,6 +90,10 @@ it('synchronizes manual marks, retains them across reload, and acknowledges only
 
   await first.bringToFront()
   await row.click()
+  await first.locator(`[data-conversation-content][data-conversation-session="${sessionId}"]`).waitFor()
+  expect(await unread(first)).toBe(1)
+  expect(await unread(second)).toBe(1)
+  await mark(first, 'Mark as read')
   await expect.poll(() => unread(first)).toBe(0)
   await expect.poll(() => unread(second)).toBe(0)
   await first.bringToFront()
@@ -131,7 +135,7 @@ it('shares a manual reminder on restored history without claiming its outcome', 
   await expect.poll(() => done(first)).toBe(1)
   await expect.poll(() => done(second)).toBe(1)
   expect(await errors(first)).toBe(0)
-  expect(await row(first).getByText('Unread', { exact: true }).count()).toBe(1)
+  expect(await row(first).locator('[data-state="done"]').count()).toBe(1)
   await compareOrRefreshGolden(FAILED_EXPECTED, await captureStableAria(
     first, `[data-row-key="session:${failedSessionId}"]`, scaffold.workspaceCwd, { normalizeAge: true },
   ), webSnapshotMode())
@@ -149,7 +153,7 @@ it('shares a manual reminder on restored history without claiming its outcome', 
   expect(consoleState.warnings).toEqual([])
 })
 
-it('preserves manual unread on window focus and clears it after the main view leaves and returns', async () => {
+it('preserves manual unread across focus and main-view switches until an explicit read action', async () => {
   onTestFailed(() => saveFailureShot(first, 'session-reading-entry'))
   const row = first.locator(`[data-row-key="session:${sessionId}"]`)
   const content = (id: string) => first.locator(`[data-conversation-content][data-conversation-session="${id}"]`)
@@ -174,6 +178,46 @@ it('preserves manual unread on window focus and clears it after the main view le
   await content(failedSessionId).waitFor()
   expect(await unread(first)).toBe(1)
   await row.click()
+  await content(sessionId).waitFor()
+  expect(await unread(first)).toBe(1)
+  expect(await unread(second)).toBe(1)
+  await mark(first, 'Mark as read')
   await expect.poll(() => unread(first)).toBe(0)
   await expect.poll(() => unread(second)).toBe(0)
+})
+
+it('restores both browser completion keys and keeps an opened reminder until its yellow marker is confirmed', async () => {
+  if (await first.locator(`[data-row-key="session:${failedSessionId}"] [data-state="done"]`).count() > 0) {
+    await mark(first, 'Mark as read', failedSessionId)
+  }
+  await expect.poll(() => first.locator(`[data-row-key="session:${failedSessionId}"] [data-state="done"]`).count()).toBe(0)
+  const page = await newEnglishPage(browser)
+  onTestFailed(() => saveFailureShot(page, 'session-reading-stored'))
+  try {
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+    await page.getByText('Ungrouped', { exact: true }).waitFor({ timeout: 30_000 })
+    await page.evaluate(({ unreadId, pendingId }) => {
+      localStorage.setItem('dsh.session-completion-unread.v1', JSON.stringify([unreadId]))
+      localStorage.setItem('dsh.session-completion-pending-ack.v1', JSON.stringify([pendingId]))
+    }, { unreadId: sessionId, pendingId: failedSessionId })
+    await page.reload({ waitUntil: 'load' })
+    const group = page.getByText('Ungrouped', { exact: true }).locator('xpath=ancestor::*[@role="treeitem"][1]')
+    await group.waitFor({ timeout: 30_000 })
+    if (await group.getAttribute('aria-expanded') !== 'true') await group.click()
+    const row = page.locator(`[data-row-key="session:${sessionId}"]`)
+    const pendingRow = page.locator(`[data-row-key="session:${failedSessionId}"]`)
+    await expect.poll(() => row.locator('[data-state="done"]').count()).toBe(1)
+    await pendingRow.getByRole('button', { name: 'Mark as read', exact: true }).waitFor()
+    await row.click()
+    await row.getByRole('button', { name: 'Mark as read', exact: true }).waitFor()
+    await page.reload({ waitUntil: 'load' })
+    await row.getByRole('button', { name: 'Mark as read', exact: true }).waitFor({ timeout: 30_000 })
+    await row.getByRole('button', { name: 'Mark as read', exact: true }).click()
+    await expect.poll(() => page.evaluate(() =>
+      localStorage.getItem('dsh.session-completion-pending-ack.v1'),
+    )).toBe(JSON.stringify([failedSessionId]))
+    expect(await pendingRow.getByRole('button', { name: 'Mark as read', exact: true }).count()).toBe(1)
+  } finally {
+    await page.close()
+  }
 })

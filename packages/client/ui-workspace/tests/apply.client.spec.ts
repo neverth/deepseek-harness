@@ -33,7 +33,6 @@ import { FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
 import { UNGROUPED_KEY } from '../src/client/tree.ts'
 import { SECTION_HOOK_CONTEXT, SECTION_INJECT } from './section-scroller.client.ts'
 import { provideSessionStatus } from './session-status.client.ts'
-import { apply as hostApply } from '../src/index.ts'
 
 const sid = (id: string) => id as SessionId
 const summary = (id: string, updatedAt: number): SessionSummary => ({
@@ -75,8 +74,7 @@ async function bench(access: 'fake' | 'static' = 'fake') {
   ctx.provide('uiConversation', {})
   const status = provideSessionStatus(ctx)
   // The row acknowledgement control writes through the Session status service.
-  const acknowledgeCompletion = vi.fn()
-  Object.assign(status, { acknowledgeCompletion })
+  const acknowledgeCompletion = status.acknowledgeCompletion
   await ctx.plugin(SlotRegistry).await()
   const accessSource = vi.fn((_kind: string, _id: string, _action: string): HostObservable<boolean> => ALLOWED)
   const stopGuard = vi.fn()
@@ -195,14 +193,15 @@ type RowListName = typeof MENU_ITEM | typeof ROW_ACTION | 'shell.overlay'
 function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
   const children = Object.fromEntries([...names, 'contextMenu.content', 'contextMenu.icon'].map(name => [
     name, { kind: name === 'shell.overlay' ? 'list' : name.startsWith('contextMenu.') ? 'keyed' : 'single', scope: 'root',
-      ...name === 'contextMenu.icon' ? { inline: true } : {} },
+      ...name === 'contextMenu.icon' ? { inline: true } : {},
+      ...name === 'sidebar.workspaces' ? { inject: SECTION_INJECT } : {} },
   ]))
   return slots.register({ name: 'root', children } as never, () => null)
 }
 
 /** Own the sidebar declaration independently of the frame-wide overlay in lifecycle tests. */
 function SidebarDeclarationOwner({ renderSlot }: PropsRenderSlots<'sidebar.workspaces'>) {
-  return renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
+  return renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} }, { hookContext: SECTION_HOOK_CONTEXT })
 }
 
 /** The one entry registered under `id` in a list. */

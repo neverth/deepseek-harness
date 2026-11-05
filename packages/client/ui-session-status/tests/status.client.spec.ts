@@ -215,7 +215,7 @@ describe('Session reading reminders', () => {
     expect(service.getSnapshot().has(id)).toBe(false)
   })
 
-  it('restores both original storage keys, sweeps absent identities, and persists explicit acknowledgement', () => {
+  it('restores both original storage keys, sweeps absent identities, and persists explicit acknowledgement', async () => {
     const store = new Map<string, string>()
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => store.get(key) ?? null,
@@ -236,7 +236,11 @@ describe('Session reading reminders', () => {
     service.acknowledgeCompletion(unreadId)
     expect(JSON.parse(store.get(unreadKey) ?? 'null')).toEqual([])
     expect(JSON.parse(store.get(ackKey) ?? 'null')).toEqual([ackId])
-    const reloaded = b.status()
+    await b.ctx.fiber.dispose()
+    const next = bench()
+    next.row(unreadId)
+    next.row(ackId)
+    const reloaded = next.status()
     expect(reloaded.getSnapshot().get(unreadId)?.completionUnread).toBe(false)
     expect(reloaded.getSnapshot().get(ackId)?.completionPendingAck).toBe(true)
     reloaded.acknowledgeCompletion(ackId)

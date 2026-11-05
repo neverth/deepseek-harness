@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Natural reminders of the Session the visible, focused main view retains. */
+/** Explicit confirmation of observed completions while the main view changes. */
 import { Context } from '@deepseek-ai/cordis'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -22,7 +22,10 @@ afterEach(async () => {
 function bench() {
   const ctx = new Context()
   roots.push(ctx)
-  ctx.provide('remote', { $on: () => () => {} } as never)
+  let emit: ((id: SessionId, running: boolean) => void) | undefined
+  ctx.provide('remote', {
+    $on: (_name: string, listener: typeof emit) => { emit = listener; return () => { emit = undefined } },
+  } as never)
   const row = (id: SessionId, mainView: boolean) => ({
     id, displayTitle: id, running: false, retainedBy: mainView ? { mainView: 1 } : {}, blank: false, updatedAt: 1,
   })
@@ -43,6 +46,9 @@ function bench() {
     createSnapshotStore<ReadonlyMap<SessionId, SessionPendingInteraction>>(new Map()))
   const reading: { set(value: SessionReadSnapshot): void } = service.reading.state
   reading.set({ ready: true, items: { [viewed]: record(viewed, {}), [other]: record(other, {}) } })
+  if (emit === undefined) throw new Error('status source is not subscribed')
+  for (const id of [viewed, other]) { emit(id, true); emit(id, false) }
+  list.update((draft) => { draft.byId[viewed] = row(viewed, true) })
   const status = (id: SessionId) => service.getSnapshot().get(id)
   const view = (id: SessionId) => {
     list.update((draft) => {
@@ -56,21 +62,23 @@ function bench() {
   return { ctx, reading, record, focus, visibility, status, view, openState, service, snapshot }
 }
 
-it('hides the natural reminder of the viewed Session until the window loses focus or visibility', () => {
+it('keeps the viewed completion pending explicit confirmation across window focus and visibility changes', () => {
   const b = bench()
-  expect(b.status(viewed)).toMatchObject({ completionUnread: false, completionFailed: false })
+  expect(b.status(viewed)).toMatchObject({ completionUnread: false, completionPendingAck: true, completionFailed: false })
   expect(b.status(other)).toMatchObject({ completionUnread: true, completionFailed: true })
 
   b.focus.mockReturnValue(false)
   window.dispatchEvent(new Event('blur'))
-  expect(b.status(viewed)).toMatchObject({ completionUnread: true, completionFailed: true })
+  expect(b.status(viewed)).toMatchObject({ completionUnread: false, completionPendingAck: true, completionFailed: false })
   b.focus.mockReturnValue(true)
   window.dispatchEvent(new Event('focus'))
   expect(b.status(viewed)?.completionUnread).toBe(false)
 
   b.visibility.mockReturnValue('hidden')
   document.dispatchEvent(new Event('visibilitychange'))
-  expect(b.status(viewed)?.completionUnread).toBe(true)
+  expect(b.status(viewed)?.completionPendingAck).toBe(true)
+  b.service.acknowledgeCompletion(viewed)
+  expect(b.status(viewed)?.completionPendingAck).toBe(false)
 })
 
 it('keeps a manual reminder of the viewed Session visible', () => {
@@ -79,21 +87,21 @@ it('keeps a manual reminder of the viewed Session visible', () => {
   expect(b.status(viewed)).toMatchObject({ completionUnread: true, completionFailed: true })
 })
 
-it('shows an unacknowledged completion again after the main view switches to another Session', () => {
+it('keeps an opened completion pending when the main view switches to another Session', () => {
   const b = bench()
   b.view(other)
-  expect(b.status(viewed)).toMatchObject({ completionUnread: true, completionFailed: true })
-  expect(b.status(other)).toMatchObject({ completionUnread: false, completionFailed: false })
+  expect(b.status(viewed)).toMatchObject({ completionUnread: false, completionPendingAck: true })
+  expect(b.status(other)).toMatchObject({ completionUnread: false, completionPendingAck: true })
 })
 
-it('shows the natural reminder of the viewed Session until that Session is open', () => {
+it('does not acknowledge the viewed completion when loading or open-state updates arrive', () => {
   const b = bench()
   b.openState(viewed, 'loading')
-  expect(b.status(viewed)).toMatchObject({ completionUnread: true, completionFailed: true })
+  expect(b.status(viewed)).toMatchObject({ completionUnread: false, completionPendingAck: true })
   b.openState(viewed, 'error')
-  expect(b.status(viewed)?.completionUnread).toBe(true)
+  expect(b.status(viewed)?.completionPendingAck).toBe(true)
   b.openState(viewed, 'open')
-  expect(b.status(viewed)).toMatchObject({ completionUnread: false, completionFailed: false })
+  expect(b.status(viewed)).toMatchObject({ completionUnread: false, completionPendingAck: true })
 })
 
 it('does not rebuild the table when the viewed Session snapshot changes without an open-state change', () => {

@@ -26,6 +26,9 @@ it('reports a failed completion as an error reminder until it is read', async ({
   const sessions = client.ctx.sessions
   const status = () => client.ctx.uiSession.sessionStatus.getSnapshot().get(parentId)
   await sessions.refresh()
+  mock.streams.push('$events', { type: 'emit', event: 'api-session/status', args: [parentId, true] })
+  mock.streams.push('$events', { type: 'emit', event: 'api-session/status', args: [parentId, false] })
+  await mock.streams.drained('$events')
   await vi.waitFor(() => { expect(status()).toMatchObject({ completionUnread: true, completionFailed: true }) })
 
   mock.streams.push('sessionStatus/follow', { type: 'changed', state: record(2, 0) })
@@ -34,14 +37,20 @@ it('reports a failed completion as an error reminder until it is read', async ({
 
   mock.streams.push('sessionStatus/follow', { type: 'changed', state: record(2, 2, true) })
   await mock.streams.drained('sessionStatus/follow')
+  expect(status()?.completionUnread).toBe(true)
+  client.ctx.uiSession.sessionStatus.acknowledgeCompletion(parentId)
   await vi.waitFor(() => { expect(status()).toMatchObject({ completionUnread: false, completionFailed: false }) })
 
   mock.streams.push('sessionStatus/follow', { type: 'changed', state: record(3, 2, true) })
+  mock.streams.push('$events', { type: 'emit', event: 'api-session/status', args: [parentId, true] })
+  mock.streams.push('$events', { type: 'emit', event: 'api-session/status', args: [parentId, false] })
+  await mock.streams.drained('$events')
   await mock.streams.drained('sessionStatus/follow')
   await vi.waitFor(() => { expect(status()).toMatchObject({ completionUnread: true, completionFailed: true }) })
 
   mock.streams.push('sessionStatus/follow', { type: 'changed', state: record(3, 3, true) })
   await mock.streams.drained('sessionStatus/follow')
+  client.ctx.uiSession.sessionStatus.acknowledgeCompletion(parentId)
   await vi.waitFor(() => { expect(status()).toMatchObject({ completionUnread: false, completionFailed: false }) })
 })
 
@@ -102,11 +111,14 @@ it('preserves unlisted child status through metadata updates and main view ackno
   } })
   await mock.streams.drained('sessionStatus/follow')
   await vi.waitFor(() => {
-    expect(status.getSnapshot().get(childId)).toMatchObject({ running: false, completionUnread: false })
+    expect(status.getSnapshot().get(childId)).toMatchObject({ running: false, completionUnread: false, completionPendingAck: true })
   })
   reference.release()
   await client.flush()
   expect(status.getSnapshot().get(childId)?.completionUnread).toBe(false)
+  expect(status.getSnapshot().get(childId)?.completionPendingAck).toBe(true)
+  status.acknowledgeCompletion(childId)
+  expect(status.getSnapshot().get(childId)?.completionPendingAck).toBe(false)
 })
 
 it('reports the effective ui-session pending interaction as the same request object', async ({ start }) => {
@@ -122,7 +134,7 @@ it('reports the effective ui-session pending interaction as the same request obj
 
 it('applies ordered whole-record reading changes after the baseline', async ({ mock, start }) => {
   const record = (completedTurn: number, readTurn: number) => ({
-    sessionId: parentId, completedTurn, failed: false, readTurn, manualUnread: false,
+    sessionId: parentId, completedTurn, failed: false, readTurn, manualUnread: completedTurn > readTurn,
   })
   mock.stream('sessionStatus/follow', (_request, stream) => {
     stream.push({ type: 'baseline', items: [record(1, 0)] })
@@ -144,7 +156,7 @@ it('retains reminders after a stream ends, replaces the reconnect baseline, and 
     generation++
     stream.push({ type: 'baseline', items: [{
       sessionId: parentId, completedTurn: generation, failed: generation === 2, readTurn: 0,
-      manualUnread: false,
+      manualUnread: true,
     }] })
     if (generation === 1) stream.end()
     else stream.fail(new RemoteError('session-status/unavailable', 'Reading storage unavailable', {}))

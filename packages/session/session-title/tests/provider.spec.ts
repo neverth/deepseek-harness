@@ -212,14 +212,14 @@ describe('SessionTitleService Provider lifecycle', () => {
     await ctx.plugin(SessionTitleService, CONFIG)
     const requests: SessionTitleProviderRequest[] = []
     ctx.sessionTitle.register({
-      id: SessionTitleProviderId('periodic'),
+      id: brandString<SessionTitleProviderId>('periodic'),
       automatic: 'first-prompt',
       async generate(request) {
         requests.push(request)
         return { title: `Revision ${requests.length}`, messageSeqs: [request.messages.at(-1)!.seq] }
       },
     })
-    const session = ctx.sessions.create(SessionId('periodic-first-prompt'))
+    const session = ctx.sessions.create(brandString<SessionId>('periodic-first-prompt'))
     const prompts: SessionSeq[] = []
     const prompt = async (index: number): Promise<void> => {
       prompts.push(appendHumanPrompt(session, `Prompt ${index}`).seq)
@@ -248,7 +248,7 @@ describe('SessionTitleService Provider lifecycle', () => {
     expect(ctx.sessionTitle.get(session)).toMatchObject({
       title: 'Revision 3',
       messageSeqs: [prompts[6]],
-      source: { kind: 'provider', provider: SessionTitleProviderId('periodic') },
+      source: { kind: 'provider', provider: brandString<SessionTitleProviderId>('periodic') },
     })
   })
 

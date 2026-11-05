@@ -121,14 +121,7 @@ export class UiSessionStatus extends Service implements HostObservable<SessionSt
    */
   async mark(sessionId: SessionId, unread: boolean): Promise<void> {
     await this.reading.mark(sessionId, unread)
-    if (unread) {
-      this.completionUnread.add(sessionId)
-      this.completionPendingAck.delete(sessionId)
-      this.persistReminders()
-      this.publishStatus()
-    } else {
-      this.clearCompletion(sessionId)
-    }
+    if (!unread) this.clearCompletion(sessionId)
   }
 
   /**

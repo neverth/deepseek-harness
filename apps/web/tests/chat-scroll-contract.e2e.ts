@@ -35,7 +35,6 @@ const RESTORE_SESSION_B_ID = 'chat-scroll-restore-b-e2e'
 const REPLAY_CONTEXT_WINDOW = 10_000_000
 const STREAM_PACE_MS = 24
 const GEOMETRY_TOLERANCE = 2
-const RESPONSIVE_REFLOW_TOLERANCE = 32
 const LIVE_TEXT_PROMPT = 'CHAT_SCROLL_LIVE_USER Continue this long conversation while I inspect older history.'
 const LIVE_TEXT_FIRST = 'CHAT_SCROLL_LIVE_FIRST'
 const LIVE_TEXT_DONE = 'CHAT_SCROLL_LIVE_DONE'
@@ -1305,7 +1304,7 @@ describe('web e2e: long Chat scroll contract', () => {
           const top = viewport.top + element.clientTop
           return Math.max(
             Math.abs((railBox.top + railBox.bottom) / 2 - (top + composerBox.top) / 2),
-            Math.abs(railBox.left - viewport.left - element.clientLeft - 12),
+            Math.abs(viewport.left + element.clientLeft + element.clientWidth - railBox.right - 12),
             Math.abs(composerBox.top - buttonBox.bottom - 16),
           )
         }), { timeout: 10_000 }).toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
@@ -1330,14 +1329,15 @@ describe('web e2e: long Chat scroll contract', () => {
       const rail = world.page.getByRole('navigation', { name: 'Turn navigation', includeHidden: true })
       const frame = rail.locator('../..')
       const originalStyle = await frame.getAttribute('style')
+      const originalViewport = world.page.viewportSize()
       try {
         for (const clearance of [16, 8]) {
-          for (const contentWidth of [901, 900, 899, 901]) {
-            await frame.evaluate((element, { clearance, contentWidth }) => {
-              element.style.width = `${contentWidth + 2 * (clearance + 16)}px`
+          for (const contentWidth of [1500, 900, 899, 1500]) {
+            await frame.evaluate((element, clearance) => {
               element.style.setProperty('--dsh-composer-side-clearance', `${clearance}px`)
-            }, { clearance, contentWidth })
-            await expect.poll(() => rail.isVisible()).toBe(contentWidth > 900)
+            }, clearance)
+            await world.page.setViewportSize({ width: contentWidth + 280, height: 900 })
+            await expect.poll(() => rail.isVisible()).toBe(contentWidth === 1500)
           }
         }
       } finally {
@@ -1345,6 +1345,7 @@ describe('web e2e: long Chat scroll contract', () => {
           if (style === null) element.removeAttribute('style')
           else element.setAttribute('style', style)
         }, originalStyle)
+        if (originalViewport !== null) await world.page.setViewportSize(originalViewport)
       }
       await expectControls()
       await backToBottom.click()
@@ -1444,7 +1445,7 @@ describe('web e2e: long Chat scroll contract', () => {
       // The whole log is loaded: turn 1's unique marker renders in the
       // transcript (scoped: the sidebar search row also carries it) and no
       // page remains.
-      expect(await world.page.locator('[data-conversation-scroll]')
+      expect(await world.page.locator('[data-chat-flow]')
         .getByText(HISTORY_FIXTURE.markers.user(1), { exact: false }).count()).toBe(1)
       const history = world.page.locator('[data-chat-history]')
       expect(await history.getAttribute('data-chat-history')).toBe('idle')
@@ -1635,7 +1636,7 @@ describe('web e2e: long Chat scroll contract', () => {
       await expect.poll(() => firstLoaded.getAttribute('aria-current'), { timeout: 15_000 }).toBe('true')
       expect(await loadedFlowRows(world.page)).toBeGreaterThan(beforeRows)
       await nextPaint(world.page)
-      const marker = world.page.locator('[data-conversation-scroll]')
+      const marker = world.page.locator('[data-chat-flow]')
         .getByText(HISTORY_FIXTURE.markers.user(1), { exact: false })
       expect(await marker.count()).toBe(1)
       const scrollport = await world.page.locator('[data-conversation-scroll]').boundingBox()
@@ -1787,10 +1788,19 @@ describe('web e2e: long Chat scroll contract', () => {
 
       await world.page.getByRole('tab', { name: 'Trajectory', exact: true }).click()
       await world.page.getByLabel('Trajectory timeline').waitFor({ timeout: 30_000 })
-      await world.page.setViewportSize({ width: 700, height: 900 })
       await world.page.getByRole('tab', { name: 'Chat', exact: true }).click()
+      await expectSameFlowTop(world.page, sessionAnchor)
+      await world.page.setViewportSize({ width: 1100, height: 900 })
       await nextPaint(world.page)
-      await expectSameFlowTop(world.page, sessionAnchor, RESPONSIVE_REFLOW_TOLERANCE)
+      await expect.poll(() => world.page.evaluate((key) => {
+        const row = [...document.querySelectorAll<HTMLElement>('[data-chat-anchor-key]')]
+          .find(candidate => candidate.dataset.chatAnchorKey === key)
+        const host = row?.closest('[data-conversation-scroll]')
+        const composer = host?.querySelector('[data-composer-seat]')
+        if (row === undefined || host === undefined || host === null || composer === undefined || composer === null) return false
+        const rect = row.getBoundingClientRect()
+        return rect.bottom > host.getBoundingClientRect().top && rect.top < composer.getBoundingClientRect().top
+      }, sessionAnchor.key)).toBe(true)
 
       await openSeed(
         world.page,

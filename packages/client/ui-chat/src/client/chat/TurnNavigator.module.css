@@ -21,9 +21,8 @@
 
   position: absolute;
   top: calc(var(--turn-rail-band) / 2);
-  /* Flush with the scrollport edge: the slot sits inside the transcript's side
-     padding, so the rail gives that inset back and keeps 12px of its own. */
-  right: calc(12px - (var(--dsh-composer-side-clearance) + 16px));
+  /* Keep the outline 12px inside the scrollport's right edge. */
+  right: 12px;
   /* The dragged width, straight from the component. It already clamps the
      gesture to a legible 120px floor and a 420px ceiling, and the container
      query below hides the rail where the margin cannot hold even the floor —
@@ -191,7 +190,7 @@
 }
 
 @keyframes dsh-turn-preview-enter {
-  from { opacity: 0; transform: translateX(-4px); }
+  from { opacity: 0; transform: translateX(4px); }
   to { opacity: 1; transform: translateX(0); }
 }
 
