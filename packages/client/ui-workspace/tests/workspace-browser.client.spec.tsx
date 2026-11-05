@@ -800,6 +800,37 @@ describe('WorkspaceBrowser', () => {
     ])
   })
 
+  it('auto-scrolls the list while a row drag reaches an edge', async () => {
+    const sessions = sessionState([summary('one', 3), summary('two', 2), summary('three', 1)])
+    mount({
+      useSessions: hook(sessions),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['one'])])),
+    })
+    fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '单列表' }))
+    const one = screen.getByText('one').closest('[role="treeitem"]') as HTMLElement
+    fireEvent.dragStart(one, { dataTransfer: dragData() })
+
+    // A scrollable ancestor stands in for the sidebar's list seat: jsdom lays
+    // nothing out, so the scroller geometry is stated directly.
+    const seat = one.closest('[role="tree"]')!.parentElement!
+    seat.style.overflowY = 'auto'
+    Object.defineProperty(seat, 'scrollHeight', { configurable: true, value: 1000 })
+    Object.defineProperty(seat, 'clientHeight', { configurable: true, value: 200 })
+    seat.getBoundingClientRect = () => ({
+      top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200,
+      x: 0, y: 0, toJSON: () => ({}),
+    })
+
+    fireDrag(one, 'dragOver', 195)
+    await waitFor(() => { expect(seat.scrollTop).toBeGreaterThan(0) })
+    const travelled = seat.scrollTop
+
+    fireDrag(one, 'dragOver', 2)
+    await waitFor(() => { expect(seat.scrollTop).toBeLessThan(travelled) })
+    fireEvent.dragEnd(one)
+  })
+
   it('expands a group on click and opens a session row', () => {
     const open = vi.fn()
     mount({

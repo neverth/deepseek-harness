@@ -142,6 +142,97 @@ function useNativeDragAcceptance(active: boolean): void {
   }, [active])
 }
 
+/** Distance from a scroller's edge where a row drag starts auto-scrolling. */
+const DRAG_SCROLL_EDGE_PX = 56
+/** Fastest auto-scroll travel per animation frame. */
+const DRAG_SCROLL_MAX_STEP_PX = 12
+
+/**
+ * Auto-scroll step for a pointer `offsetY` into a container `height` tall:
+ * negative near the top edge, positive near the bottom, zero between. The
+ * speed ramps up as the pointer approaches the edge.
+ * @param offsetY - pointer distance from the container's top edge.
+ * @param height - container height in CSS pixels.
+ * @returns the signed scroll step for one frame.
+ */
+function dragScrollStep(offsetY: number, height: number): number {
+  if (height <= 0) return 0
+  const towardTop = Math.min(DRAG_SCROLL_EDGE_PX, DRAG_SCROLL_EDGE_PX - offsetY)
+  if (towardTop > 0) return -Math.ceil(towardTop * DRAG_SCROLL_MAX_STEP_PX / DRAG_SCROLL_EDGE_PX)
+  const towardBottom = Math.min(DRAG_SCROLL_EDGE_PX, offsetY - (height - DRAG_SCROLL_EDGE_PX))
+  if (towardBottom > 0) return Math.ceil(towardBottom * DRAG_SCROLL_MAX_STEP_PX / DRAG_SCROLL_EDGE_PX)
+  return 0
+}
+
+/**
+ * Scroll the element under a row drag toward the pointer's edge band. Native
+ * drag-and-drop never scrolls a container, so without this a drop target below
+ * the first screenful stays unreachable. The innermost scrollable ancestor
+ * moves first; once it cannot move further the next one takes over, so the
+ * section seat and the sidebar viewport both travel on one gesture.
+ * @param target - element currently under the dragged pointer.
+ * @param clientY - pointer position in viewport coordinates.
+ */
+function scrollDragPointerIntoView(target: EventTarget | null, clientY: number): void {
+  if (!(target instanceof Element)) return
+  for (let node: Element | null = target; node !== null; node = node.parentElement) {
+    if (!(node instanceof HTMLElement)) continue
+    const overflow = getComputedStyle(node).overflowY
+    if (overflow !== 'auto' && overflow !== 'scroll') continue
+    const room = node.scrollHeight - node.clientHeight
+    if (room <= 0) continue
+    const rect = node.getBoundingClientRect()
+    const step = dragScrollStep(clientY - rect.top, rect.height)
+    if (step === 0) continue
+    const next = Math.max(0, Math.min(room, node.scrollTop + step))
+    if (next === node.scrollTop) continue
+    node.scrollTop = next
+    return
+  }
+}
+
+/**
+ * Keep `scrollDragPointerIntoView` running while a row drag is active. The
+ * pointer comes from `dragover`; applying its step on animation frames keeps
+ * the travel smooth even though those events are sparse.
+ * @param active - whether a row or header drag is in flight.
+ */
+function useDragAutoScroll(active: boolean): void {
+  useEffect(() => {
+    if (!active) return
+    let target: EventTarget | null = null
+    let pointerY = 0
+    let frame = 0
+    let running = false
+    const step = (): void => {
+      if (!running) return
+      scrollDragPointerIntoView(target, pointerY)
+      frame = requestAnimationFrame(step)
+    }
+    const onDragOver = (event: DragEvent): void => {
+      target = event.target
+      pointerY = event.clientY
+      if (running) return
+      running = true
+      frame = requestAnimationFrame(step)
+    }
+    const stop = (): void => {
+      running = false
+      cancelAnimationFrame(frame)
+      frame = 0
+    }
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('drop', stop, true)
+    window.addEventListener('dragend', stop, true)
+    return () => {
+      stop()
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('drop', stop, true)
+      window.removeEventListener('dragend', stop, true)
+    }
+  }, [active])
+}
+
 /** Grouping, ordering, and archived-filter menu; own open state so it resets with the wide chrome. */
 function ViewOptionsMenu({ groupBy, orderBy, archivedFilter, onGroupPick, onOrderPick, onArchivedFilterPick, t }: {
   groupBy: SessionGroupBy
@@ -350,6 +441,7 @@ function SessionTree({
   const workspaceDropCommitted = useRef(false)
   const nativeDragActive = drag !== null || workspaceDrag !== null
   useNativeDragAcceptance(nativeDragActive)
+  useDragAutoScroll(nativeDragActive)
   const currentGroup = current === undefined || !workspaceReady
     ? undefined
     : owningGroupKey(workspaces, current)
@@ -724,6 +816,7 @@ function FlatList({
   const [drag, setDrag] = useState<DragState | null>(null)
   const dropCommitted = useRef(false)
   useNativeDragAcceptance(drag !== null)
+  useDragAutoScroll(drag !== null)
   const currentId = panelActive
     ? undefined
     : Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
@@ -913,6 +1006,7 @@ function CustomGroupTree({
   const [orderDrag, setOrderDrag] = useState<GroupOrderDragState | null>(null)
   const orderDropCommitted = useRef(false)
   useNativeDragAcceptance(drag !== null || orderDrag !== null)
+  useDragAutoScroll(drag !== null || orderDrag !== null)
   const currentGroup = current === undefined || !workspaceReady
     ? undefined
     : owningCustomGroupKey(groups, current)
