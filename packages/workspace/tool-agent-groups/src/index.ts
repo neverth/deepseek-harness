@@ -1,8 +1,8 @@
 /**
- * Model-facing whole-group read: reports the hand-made sidebar group the
- * calling Session belongs to and the Sessions grouped with it. Grouping is a
- * user-made browsing surface; this tool turns the Host's durable copy of that
- * mapping into model-visible facts.
+ * Model-facing group awareness: one runtime-context line states the hand-made
+ * sidebar group the calling Session belongs to, and the `group_members` tool
+ * reads the Host's durable mapping for the Sessions grouped with it. Grouping
+ * is a user-made browsing surface; these are its only model-visible facts.
  * @module @deepseek-ai/dsh-tool-agent-groups
  */
 
@@ -11,15 +11,19 @@ import z from '@deepseek-ai/schemastery'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { InferValue, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
+// Type-only: pulls AssembleContext.agent from the Agent runtime declaration.
+import type {} from '@deepseek-ai/dsh-agent'
 // Type-only: pulls the ctx.agentGroups service declaration.
 import type {} from '@deepseek-ai/dsh-agent-groups'
 // Type-only: pulls the ctx.sessionQuery service declaration.
 import type {} from '@deepseek-ai/dsh-session-query'
+// Type-only: pulls the ctx.systemPrompt service declaration.
+import type {} from '@deepseek-ai/dsh-system-prompt'
 
 /** Cordis plugin name. */
 export const name = 'tool-agent-groups'
-/** Services required by the group-members tool. */
-export const inject = ['tools', 'agentGroups', 'sessionQuery']
+/** Services required by the group context and the group-members tool. */
+export const inject = ['tools', 'agentGroups', 'sessionQuery', 'systemPrompt']
 
 /** The group-members tool takes no configuration. */
 export type Config = Record<never, never>
@@ -83,11 +87,30 @@ function jsonOutput<const S extends ValueSchemaSpec>(schema: S): {
 }
 
 /**
- * Register the `group_members` tool.
- * @param ctx - context carrying the tool registry plus group and Session query services.
+ * Register the runtime-context line and the `group_members` tool.
+ * @param ctx - context carrying prompt, tool, group, and Session query services.
  * @param _config - the empty plugin configuration.
  */
 export function apply(ctx: Context, _config: Config = {}): void {
+  // The line is rewritten at every assembly, so a grouping change reaches the
+  // next turn without another tool call; peers and their titles stay behind
+  // group_members because the text provider is synchronous.
+  ctx.systemPrompt.context({
+    name: 'agent-groups:current',
+    order: ctx.systemPrompt.getContextOrder('AGENT_GROUPS'),
+    interpolate: false,
+    text: (context) => {
+      const session = context.agent?.session
+      if (session === undefined) return ''
+      const group = ctx.agentGroups.groupOf(session.id)
+      if (group === undefined) return ''
+      const peers = group.sessionIds.filter(sessionId => sessionId !== session.id).length
+      const membership = peers === 0
+        ? 'No other sessions are in it.'
+        : `It has ${String(peers)} other session${peers === 1 ? '' : 's'}; call group_members to list them with their titles, working directories, and creation times.`
+      return `This session belongs to the custom sidebar group ${JSON.stringify(group.name)}. ${membership}`
+    },
+  })
   ctx.tools.register(defineTool({
     name: 'group_members',
     description:

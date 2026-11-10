@@ -27,6 +27,9 @@
       "path": "../../session-query/session-query"
     },
     {
+      "path": "../../core/system-prompt"
+    },
+    {
       "path": "../agent-groups"
     }
   ]

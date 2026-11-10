@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -92,8 +93,27 @@ describe('plugin exports', () => {
   it('exports only the named plugin face the preset loader consumes', () => {
     // The loader reads `apply`/`inject` from named exports; a default export
     // becomes the plugin itself and silently drops the injection declaration.
-    expect(toolAgentGroups.inject).toEqual(['tools', 'agentGroups', 'sessionQuery'])
+    expect(toolAgentGroups.inject).toEqual(['tools', 'agentGroups', 'sessionQuery', 'systemPrompt'])
     expect('default' in toolAgentGroups).toBe(false)
+  })
+})
+
+describe('runtime context', () => {
+  it('names the group the calling Session belongs to', async () => {
+    const { ctx, agent } = await harness(
+      { id: 'custom:1', name: 'Release', sessionIds: ['session-a', 'session-b'] },
+    )
+    const assembly = await ctx.systemPrompt.assemble(assembleContextFor(agent))
+    expect(assembly.contexts.find(entry => entry.name === 'agent-groups:current')?.text).toBe(
+      'This session belongs to the custom sidebar group "Release". '
+      + 'It has 1 other session; call group_members to list them with their titles, working directories, and creation times.',
+    )
+  })
+
+  it('contributes no text for an ungrouped Session', async () => {
+    const { ctx, agent } = await harness(undefined)
+    const assembly = await ctx.systemPrompt.assemble(assembleContextFor(agent))
+    expect(assembly.contexts.find(entry => entry.name === 'agent-groups:current')?.text).toBe('')
   })
 })
 
