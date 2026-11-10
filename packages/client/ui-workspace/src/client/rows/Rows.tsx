@@ -719,8 +719,12 @@ export function SessionNodeItem({
   // Archived rows hold their in-place grayed slot, so manual reorder cannot
   // move them. Pinned rows drag within the pinned block: the browser gates
   // their drop targets to fellow pinned rows.
-  const renamable = useSessionAccess(node.id, 'session/rename')
-  const reorderable = useSessionAccess(node.id, 'workspace/insertSessionBefore')
+  const canRename = useSessionAccess(node.id, 'session/rename')
+  const canReorder = useSessionAccess(node.id, 'workspace/insertSessionBefore')
+  // Subagent children are view-only in the sidebar: the Host already denies
+  // their management routes, and the row never offers those actions.
+  const renamable = row.subagent !== true && canRename
+  const reorderable = row.subagent !== true && canReorder
   const draggable = drag !== undefined && reorderable && !row.blank && !row.archived
   const menuOpen = useContextMenuTarget(target => target?.kind === 'session' && target.value.sessionId === node.id)
   const dragPreview = useRowDragPreview(css.dragPreview as string, DRAG_PREVIEW_PROPERTIES)
@@ -748,6 +752,7 @@ export function SessionNodeItem({
       className={clsx(
         css.sessionRow, selected && css.selected, menuOpen && css.menuOpen,
         row.archived && css.archived,
+        row.subagent === true && css.subagentRow,
         drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter,
       )}
       role="treeitem"
@@ -756,7 +761,7 @@ export function SessionNodeItem({
       tabIndex={0}
 
       onClick={() => { onOpen(node.id) }}
-      {...getTriggerProps(row.blank ? undefined : { kind: 'session', value: { sessionId: node.id, displayTitle: row.title } }, { onKeyDown: (event) => {
+      {...getTriggerProps(row.blank || row.subagent === true ? undefined : { kind: 'session', value: { sessionId: node.id, displayTitle: row.title } }, { onKeyDown: (event) => {
         if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
         event.preventDefault()
@@ -804,7 +809,7 @@ export function SessionNodeItem({
             onAcknowledge={onAcknowledge}
             t={t}
           />
-          : renderSlot('sidebar.session.row.leading', { sessionId: node.id }))}
+          : row.subagent === true ? null : renderSlot('sidebar.session.row.leading', { sessionId: node.id }))}
       </span>
       <span className={css.text}>
         <span
@@ -844,14 +849,14 @@ export function SessionNodeItem({
           >
             {primaryStatus.trailingLabel ?? timeLabel(row.updatedAt, now, t)}
           </span>
-          {renderSlot('sidebar.session.row.trailing', { sessionId: node.id })}
+          {row.subagent !== true && renderSlot('sidebar.session.row.trailing', { sessionId: node.id })}
           {row.pinned && !row.archived && <PinnedIndicator t={t} />}
         </span>
       )}
       {/* The strip's clicks stay in the strip: the trigger and every
           row.action entry act without also opening the row, so an entry's
           button needs no propagation handling of its own. */}
-      {!row.blank && (
+      {!row.blank && row.subagent !== true && (
         <span className={css.rowActions} onClick={(e) => { e.stopPropagation() }}>
           {renderFactorySlot('contextMenu.button', {
             target: { kind: 'session', value: { sessionId: node.id, displayTitle: row.title } },

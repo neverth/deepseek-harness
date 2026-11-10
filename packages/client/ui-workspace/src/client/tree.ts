@@ -54,7 +54,7 @@ function mainSessionId(list: SessionListState): SessionId | undefined {
     .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
 }
 
-/** One top-level session row in a group or the flat list. */
+/** One session row in a group or the flat list; direct subagent children carry `depth`. */
 export interface SessionNode {
   id: SessionId
   /** Stored title, or empty; the renderer localizes blank and unnamed row labels. */
@@ -79,6 +79,12 @@ export interface SessionNode {
   updatedAt: number
   /** Session working directory; absent when the Host reports none or an empty path. */
   cwd?: string
+  /** Nesting below the section member row: absent for a member, `1` for a direct subagent child. */
+  depth?: number
+  /** A direct subagent child rendered view-only: no rename, drag, move, pin, archive, or delete. */
+  subagent?: boolean
+  /** Direct parent of a nested subagent child. */
+  parentId?: SessionId
 }
 
 /** Session order selected by the Workspace browser. */
@@ -96,7 +102,7 @@ export interface GroupNode {
   /** Workspace creation time (epoch ms); absent for a hand-made group and the ungrouped bucket. */
   createdAt: number | undefined
   label: string
-  /** Total visible sessions in the group. */
+  /** Total visible ordinary Sessions; nested subagent children are not counted. */
   sessionCount: number
   expanded: boolean
   /** The group contains the selected session (active folder tint; supplied here so the renderer never scans). */
@@ -256,10 +262,11 @@ export function pinCurrentBlank(
 export type ArchivedFilter = 'default' | 'show' | 'only'
 
 /**
- * Ordinary sessions are visible; among blank sessions, only the current one
- * is visible. Subagent children use their parent header catalog; archived
- * sessions follow the archived filter, while their accounting slots remain
- * either way so unarchiving restores position.
+ * Ordinary root sessions are visible; among blank sessions, only the current
+ * one is visible. Subagent children are attached below a visible parent by
+ * {@link subagentRows} instead of competing as root rows; archived sessions
+ * follow the archived filter, while their accounting slots remain either way
+ * so unarchiving restores position.
  */
 function sessionVisible(
   session: SessionSummary,
@@ -451,6 +458,145 @@ function runningChildCount(list: SessionListState, parentId: SessionId, statuses
   ) ?? 0
 }
 
+/**
+ * Resolve the ordinary Session at the root of one subagent lineage.
+ * @param list - sessions list snapshot.
+ * @param sessionId - possibly nested Session.
+ * @returns the nearest ancestor that is not a subagent, or the input when its
+ * lineage is unknown or cyclic.
+ */
+export function rootSessionId(list: SessionListState, sessionId: SessionId): SessionId {
+  let current = sessionId
+  const visited = new Set<SessionId>()
+  while (!visited.has(current)) {
+    visited.add(current)
+    const summary = list.byId[current]
+    if (summary === undefined || summary.origin !== 'subagent' || summary.parentId === undefined) return current
+    current = summary.parentId
+  }
+  return current
+}
+
+/** One direct subagent child with the identity its parent catalog recorded. */
+interface SubagentRow {
+  readonly summary: SessionSummary
+  readonly parentId: SessionId
+  /** Unique agent name among its siblings; absent for unnamed descriptors. */
+  readonly name?: string
+  /** Creation description recorded with the descriptor. */
+  readonly label?: string
+}
+
+/**
+ * Index every direct subagent child by its parent. Parent catalogs supply
+ * membership and order; summaries that only carry `parentId` remain as a
+ * fallback until the owning catalog arrives.
+ * @param list - sessions list snapshot.
+ * @returns direct children per parent, in catalog order then recency.
+ */
+function directChildren(list: SessionListState): Map<SessionId, readonly SubagentRow[]> {
+  const buckets = new Map<SessionId, SubagentRow[]>()
+  const placed = new Set<SessionId>()
+  const ranks = new Map<SessionId, number>()
+  const add = (row: SubagentRow): void => {
+    if (placed.has(row.summary.id)) return
+    placed.add(row.summary.id)
+    const bucket = buckets.get(row.parentId) ?? []
+    bucket.push(row)
+    buckets.set(row.parentId, bucket)
+  }
+  const complete = new Set<SessionId>()
+  for (const [parentId, snapshot] of Object.entries(list.projectionsBySession)) {
+    const entries = snapshot.values.subagentCatalog
+    // An available catalog owns membership, including an explicitly empty
+    // one; a missing catalog falls back to summary lineage below.
+    if (entries === undefined) continue
+    complete.add(parentId as SessionId)
+    for (const [index, entry] of entries.entries()) {
+      if (entry.mode === 'external') continue
+      const summary = list.byId[entry.id]
+      if (summary === undefined || summary.origin !== 'subagent') continue
+      // A duplicated descriptor keeps the first position; `add` still owns
+      // the single-row guarantee.
+      if (!placed.has(summary.id)) ranks.set(summary.id, index)
+      add({
+        summary,
+        parentId: parentId as SessionId,
+        ...('name' in entry ? { name: entry.name } : {}),
+        ...(entry.label === undefined ? {} : { label: entry.label }),
+      })
+    }
+  }
+  for (const summary of Object.values(list.byId)) {
+    if (summary.origin !== 'subagent' || summary.parentId === undefined || complete.has(summary.parentId)) continue
+    add({ summary, parentId: summary.parentId })
+  }
+  for (const bucket of buckets.values()) {
+    bucket.sort((left, right) => {
+      const leftRank = ranks.get(left.summary.id) ?? Number.MAX_SAFE_INTEGER
+      const rightRank = ranks.get(right.summary.id) ?? Number.MAX_SAFE_INTEGER
+      if (leftRank !== rightRank) return leftRank - rightRank
+      if (left.summary.updatedAt !== right.summary.updatedAt) return left.summary.updatedAt - right.summary.updatedAt
+      return left.summary.id.localeCompare(right.summary.id)
+    })
+  }
+  return buckets
+}
+
+/**
+ * Direct subagent rows nested below one visible parent.
+ * @param children - direct-child index from {@link directChildren}.
+ * @param parent - visible root row whose children are requested.
+ * @param list - sessions list snapshot.
+ * @param statuses - unified UI status by Session.
+ * @param archived - registry-global archive set.
+ * @returns view-only child rows in catalog order, empty when the parent has none.
+ */
+function subagentRows(
+  children: ReadonlyMap<SessionId, readonly SubagentRow[]>,
+  parent: SessionSummary,
+  list: SessionListState,
+  statuses: SessionStatuses,
+  archived: ReadonlySet<SessionId>,
+): SessionNode[] {
+  return (children.get(parent.id) ?? []).map(row => subagentNode(row, list, statuses, archived))
+}
+
+/**
+ * Build one view-only child row without section membership or ordering.
+ * @param row - child summary with its catalog identity.
+ * @param list - sessions list snapshot.
+ * @param statuses - unified UI status by Session.
+ * @param archived - registry-global archive set.
+ * @returns a nested row showing the agent name and its latest prompt.
+ */
+function subagentNode(
+  row: SubagentRow,
+  list: SessionListState,
+  statuses: SessionStatuses,
+  archived: ReadonlySet<SessionId>,
+): SessionNode {
+  const status = statuses.get(row.summary.id)
+  const preview = latestPrompt(list, row.summary.id)
+  return {
+    id: row.summary.id,
+    title: row.name ?? (sessionTitle(row.summary) || row.label || ''),
+    blank: false,
+    running: status?.running ?? row.summary.running,
+    runningSubagentCount: runningChildCount(list, row.summary.id, statuses),
+    completed: status?.completionUnread === true,
+    awaitingAck: status?.completionPendingAck === true,
+    pinned: false,
+    archived: archived.has(row.summary.id),
+    updatedAt: row.summary.updatedAt,
+    ...(row.summary.cwd === undefined || row.summary.cwd === '' ? {} : { cwd: row.summary.cwd }),
+    ...(preview === undefined ? {} : { preview }),
+    depth: 1,
+    subagent: true,
+    parentId: row.parentId,
+  }
+}
+
 function sessionNode(
   s: SessionSummary,
   list: SessionListState,
@@ -479,7 +625,8 @@ function sessionNode(
 }
 
 /**
- * Derive the workspace browser groups with every session as a top-level row.
+ * Derive the workspace browser groups with ordinary Sessions as top-level rows
+ * and each visible Session's direct subagent children nested view-only below it.
  *
  * Every group shows, except that the archived-only filter drops groups
  * without visible members; sessions populate under expanded groups with
@@ -505,9 +652,12 @@ export function deriveGroups(
   const pinned = new Set(rowState.pinnedSessionIds)
   const expandedGroups = new Set(view.expandedGroups)
   const current = mainSessionId(list)
+  // A selected subagent belongs to the ordinary Session above it for group
+  // highlighting and expansion; the child row itself still carries selection.
   const currentGroup = current === undefined
     ? undefined
-    : owningGroupKey(workspaces, current)
+    : owningGroupKey(workspaces, rootSessionId(list, current))
+  const children = directChildren(list)
   const groups: GroupNode[] = []
   for (const g of groupByWorkspace(list, workspaces, archived, rowState.archivedFilter, view.ungroupedOrder)) {
     const expanded = expandedGroups.has(g.key)
@@ -521,8 +671,10 @@ export function deriveGroups(
       expanded,
       containsCurrent: g.key === currentGroup,
       sessions: expanded
-        ? sectionMembers(g.sessions, pinned, archived)
-          .map(session => sessionNode(session, list, statuses, pinned, archived))
+        ? sectionMembers(g.sessions, pinned, archived).flatMap(session => [
+          sessionNode(session, list, statuses, pinned, archived),
+          ...subagentRows(children, session, list, statuses, archived),
+        ])
         : [],
     })
   }
@@ -559,7 +711,8 @@ export function deriveCustomGroups(
   const current = mainSessionId(list)
   const currentGroup = current === undefined
     ? undefined
-    : groups.find(group => group.sessionIds.includes(current))?.id ?? UNGROUPED_KEY
+    : groups.find(group => group.sessionIds.includes(rootSessionId(list, current)))?.id ?? UNGROUPED_KEY
+  const children = directChildren(list)
   const sections: { node: GroupNode; latest: number }[] = []
   // Membership is accounted for before visibility: a Session the archived
   // filter hides still belongs to its group rather than to the bucket.
@@ -593,8 +746,10 @@ export function deriveCustomGroups(
         expanded: isExpanded,
         containsCurrent: key === currentGroup,
         sessions: isExpanded
-          ? sectionMembers(members, pinned, archived)
-            .map(session => sessionNode(session, list, statuses, pinned, archived))
+          ? sectionMembers(members, pinned, archived).flatMap(session => [
+            sessionNode(session, list, statuses, pinned, archived),
+            ...subagentRows(children, session, list, statuses, archived),
+          ])
           : [],
       },
       latest: latestMemberTime(members),
@@ -657,7 +812,8 @@ export function visibleSessionIds(
 
 /**
  * Derive flat rows from the browser's complete ordered Session ids, with
- * pinned rows fronted ahead of the supplied order.
+ * pinned rows fronted ahead of the supplied order and direct subagent
+ * children nested below their parent.
  * @param list - sessions list snapshot used to select the ids.
  * @param sessionIds - complete account members in the selected order, including hidden archives.
  * @param rowState - registry-global pin and archive sets plus the archived filter.
@@ -679,8 +835,11 @@ export function deriveFlat(
       ? [session]
       : []
   })
-  return sectionMembers(members, pinned, archived)
-    .map(session => sessionNode(session, list, statuses, pinned, archived))
+  const children = directChildren(list)
+  return sectionMembers(members, pinned, archived).flatMap(session => [
+    sessionNode(session, list, statuses, pinned, archived),
+    ...subagentRows(children, session, list, statuses, archived),
+  ])
 }
 
 /**

@@ -846,6 +846,37 @@ describe('WorkspaceBrowser', () => {
     expect(screen.queryByText('alpha-s')).toBeNull()
   })
 
+  it('renders a subagent child view-only below its parent and opens it on click', () => {
+    const requestSessionRename = vi.fn()
+    const open = vi.fn()
+    const parent = summary('parent-s', 2, { title: 'Parent session', displayTitle: 'Parent session' })
+    const child = summary('child', 1, { origin: 'subagent', parentId: parent.id })
+    mount({
+      useSessions: hook(sessionState([parent, child], {
+        projectionsBySession: {
+          [parent.id]: {
+            state: 'ready', error: null,
+            values: { subagentCatalog: [{ id: child.id, mode: 'continuable', label: 'Child', createdAt: 1 }] },
+          },
+        },
+      })),
+      useWorkspaces: hook(workspaceState([workspace('alpha', [parent.id])])),
+      requestSessionRename,
+      open,
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    const row = screen.getByText('child').closest('[data-row-key]') as HTMLElement
+    expect(row.getAttribute('data-row-key')).toBe('session:child')
+    // View-only: no row menu, pin, archive, or other management control.
+    expect(within(row).queryByRole('button')).toBeNull()
+    fireEvent.mouseDown(screen.getByText('child'), { detail: 1 })
+    fireEvent.mouseDown(screen.getByText('child'), { detail: 2 })
+    fireEvent.doubleClick(screen.getByText('child'))
+    expect(requestSessionRename).not.toHaveBeenCalled()
+    fireEvent.click(row)
+    expect(open).toHaveBeenCalledWith(sid('child'))
+  })
+
   it('a title double-click asks for the rename dialog with the row title', () => {
     const requestSessionRename = vi.fn()
     const open = vi.fn()
@@ -1036,7 +1067,8 @@ describe('WorkspaceBrowser', () => {
     fireEvent.click(screen.getByText('alpha'))
     expect(screen.getByText('session-7')).toBeTruthy()
     expect(screen.queryByText('session-8')).toBeNull()
-    expect(screen.queryByText('child')).toBeNull()
+    // A direct subagent child hangs below its visible parent.
+    expect(screen.getByText('child')).toBeTruthy()
     rerender(b, { useSessions: hook(sessionState(items, { main: sid('session-8') })) })
     expect(screen.getByText('session-8')).toBeTruthy()
     expect(screen.queryByText('session-9')).toBeNull()

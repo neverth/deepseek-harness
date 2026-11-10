@@ -8,7 +8,7 @@
   background-clip: padding-box;
   box-sizing: border-box;
   padding: 0 8px;
-  padding-inline-start: calc(var(--dsh-sidebar-row-padding) - var(--dsh-sidebar-paint-inset) + var(--dsh-workspace-indent, 0px));
+  padding-inline-start: calc(var(--dsh-sidebar-row-padding) - var(--dsh-sidebar-paint-inset) + var(--dsh-workspace-indent, 0px) + var(--dsh-subagent-indent, 0px));
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
@@ -124,6 +124,21 @@
 .sessionRow {
   min-height: 32px;
   gap: 0;
+}
+
+/* A direct subagent child hangs below its parent: one extra indent step and
+   a quieter title keep the hierarchy readable without a second control. */
+.subagentRow {
+  --dsh-subagent-indent: 18px;
+}
+
+.subagentRow .title {
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.subagentRow.selected .title {
+  color: var(--dsw-alias-label-primary);
 }
 
 /* Title over preview: one text column between the leading slot and the

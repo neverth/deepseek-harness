@@ -6,6 +6,7 @@ import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-
 import type {
   SessionPendingInteraction, SessionStatus, SessionStatusSnapshot,
 } from '@deepseek-ai/dsh-client-ui-session/client'
+import { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { SessionProjectionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -13,7 +14,8 @@ import {
   type ArchivedFilter,
   deriveCustomGroups, deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningCustomGroupKey,
   owningGroupKey, owningParentFolder,
-  pinCurrentBlank, reconcileManualOrder, sessionMemberIds, visibleSessionIds, workspaceLabel, UNGROUPED_KEY,
+  pinCurrentBlank, reconcileManualOrder, rootSessionId, sessionMemberIds, visibleSessionIds, workspaceLabel,
+  UNGROUPED_KEY,
 } from '../src/client/tree.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
 
@@ -42,6 +44,10 @@ const withMain = (state: SessionListState, id: SessionId): SessionListState => (
     ...state.byId,
     [id]: { ...state.byId[id]!, retainedBy: { ...state.byId[id]!.retainedBy, mainView: 1 } },
   },
+})
+const withCatalog = (state: SessionListState, parentId: SessionId, ...ids: string[]): SessionListState => ({
+  ...state,
+  projectionsBySession: { ...state.projectionsBySession, [parentId]: catalog(...ids) },
 })
 /**
  * Projection values one shipped Host publishes for a Session. The `forkLineage` key belongs to the
@@ -360,7 +366,7 @@ describe('deriveGroups', () => {
     expect(search.items[0]?.completed).toBe(true)
   })
 
-  it('hides subagent-origin sessions and reads direct running counts from catalogs', () => {
+  it('nests direct subagent sessions below their parent and reads direct running counts from catalogs', () => {
     const parent = summary('parent', 1)
     const subagent = {
       ...summary('subagent', 3), parentId: parent.id, origin: 'subagent' as const, running: true,
@@ -391,18 +397,170 @@ describe('deriveGroups', () => {
       view(['first']),
     )
 
-    expect(groups[0]!.sessions.map(node => node.id)).toEqual([parent.id, fork.id])
+    expect(groups[0]!.sessions.map(node => node.id)).toEqual([parent.id, subagent.id, fork.id, forkChild.id])
     expect(groups[0]!.sessionCount).toBe(2)
     expect(groups[0]!.sessions[0]).toMatchObject({ running: false, runningSubagentCount: 1 })
-    expect(groups[0]!.sessions[1]).toMatchObject({ running: false, runningSubagentCount: 1 })
+    expect(groups[0]!.sessions[1]).toMatchObject({ depth: 1, subagent: true, parentId: parent.id })
+    expect(groups[0]!.sessions[2]).toMatchObject({ running: false, runningSubagentCount: 1 })
+    expect(groups[0]!.sessions[3]).toMatchObject({ depth: 1, subagent: true, parentId: fork.id })
+    // Only direct children hang below a visible parent; the grandchild stays hidden.
+    expect(groups[0]!.sessions.some(node => node.id === grandchild.id)).toBe(false)
     expect(deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, noAttention)
       .map(node => [node.id, node.runningSubagentCount])).toEqual([
-      [parent.id, 1], [fork.id, 1],
+      [parent.id, 1], [subagent.id, 1], [fork.id, 1], [forkChild.id, 0],
     ])
     expect(deriveSearchResults(
       sessions, [workspace('first', ['parent', 'fork'])], 'parent', noArchive, 'default',
       noAttention, { items: [], hasMore: false }, 10,
     ).items[0]).toMatchObject({ id: parent.id, runningSubagentCount: 1 })
+  })
+
+  it('follows an available parent catalog for membership, order, and agent names', () => {
+    const parent = summary('parent', 1)
+    const named = { ...summary('named', 5), parentId: parent.id, origin: 'subagent' as const }
+    const unnamed = { ...summary('unnamed', 4), parentId: parent.id, origin: 'subagent' as const }
+    const fork = { ...summary('fork', 3), parentId: parent.id }
+    const fallbackOnly = { ...summary('fallback-only', 2), parentId: parent.id, origin: 'subagent' as const }
+    const state: SessionListState = {
+      ...list(parent, named, unnamed, fork, fallbackOnly),
+      projectionsBySession: {
+        [parent.id]: {
+          state: 'ready',
+          error: null,
+          values: {
+            subagentCatalog: [
+              { id: sid('external'), mode: 'external', label: 'external', createdAt: 1 },
+              { id: sid('missing'), mode: 'continuable', label: 'missing', createdAt: 1 },
+              { id: fork.id, mode: 'continuable', label: 'fork', createdAt: 1 },
+              { id: unnamed.id, mode: 'one-shot', createdAt: 1 },
+              { id: named.id, mode: 'continuable', label: 'Named', name: 'perf', createdAt: 1 },
+            ],
+          },
+        },
+      },
+    }
+    const groups = deriveGroups(state, [workspace('first', ['parent'])], noRows, noAttention, view(['first']))
+    const children = groups[0]!.sessions.filter(node => node.subagent === true)
+    expect(children.map(node => [node.id, node.title])).toEqual([
+      [unnamed.id, 'unnamed'],
+      [named.id, 'perf'],
+    ])
+    // An available catalog owns membership even when summary lineage names another child.
+    expect(children.some(node => node.id === fallbackOnly.id)).toBe(false)
+  })
+
+  it('falls back to summary lineage until the owning catalog value arrives', () => {
+    const parent = summary('parent', 1)
+    const older = { ...summary('older', 2), parentId: parent.id, origin: 'subagent' as const }
+    const tieB = { ...summary('tie-b', 3), parentId: parent.id, origin: 'subagent' as const }
+    const tieA = { ...summary('tie-a', 3), parentId: parent.id, origin: 'subagent' as const }
+    const orphan = { ...summary('orphan', 4), origin: 'subagent' as const }
+    const state: SessionListState = {
+      ...list(parent, older, tieB, tieA, orphan),
+      projectionsBySession: {
+        [parent.id]: { state: 'ready', error: null, values: {} },
+      },
+    }
+    const rows = deriveFlat(state, [parent.id], noRows, noAttention)
+    expect(rows.map(node => node.id)).toEqual([parent.id, older.id, tieA.id, tieB.id])
+  })
+
+  it('derives view-only child rows with their own status, directory, preview, and title fallbacks', () => {
+    const parent = summary('parent', 1)
+    const named = { ...summary('named', 2, '/work/named'), parentId: parent.id, origin: 'subagent' as const }
+    const labelled = {
+      ...summary('blank-title', 3), parentId: parent.id, origin: 'subagent' as const, title: '', displayTitle: '',
+    }
+    const bare = { ...summary('bare', 4), parentId: parent.id, origin: 'subagent' as const, title: '', displayTitle: '' }
+    const archivedChild = { ...summary('archived-child', 5), parentId: parent.id, origin: 'subagent' as const }
+    const state: SessionListState = {
+      ...list(parent, named, labelled, bare, archivedChild),
+      projectionsBySession: {
+        [parent.id]: {
+          state: 'ready',
+          error: null,
+          values: {
+            subagentCatalog: [
+              { id: named.id, mode: 'continuable', label: 'Named label', name: 'perf', createdAt: 1 },
+              { id: labelled.id, mode: 'one-shot', label: 'Labelled', createdAt: 1 },
+              { id: bare.id, mode: 'one-shot', createdAt: 1 },
+              { id: archivedChild.id, mode: 'continuable', label: 'Archived', name: 'archived', createdAt: 1 },
+              { id: named.id, mode: 'continuable', label: 'Duplicate', name: 'duplicate', createdAt: 1 },
+            ],
+          },
+        },
+        [named.id]: {
+          state: 'ready',
+          error: null,
+          values: {
+            turnOutline: [
+              { turn: 1, prompt: 'older prompt', seq: SessionSeq(1), response: '' },
+              { turn: 2, prompt: 'latest child prompt', seq: SessionSeq(2), response: '' },
+            ],
+          },
+        },
+        [bare.id]: {
+          state: 'ready',
+          error: null,
+          values: {
+            turnOutline: [{ turn: 1, prompt: '   ', seq: SessionSeq(3), response: '' }],
+          },
+        },
+      },
+    }
+    const statuses = new Map<SessionId, SessionStatus>([
+      [named.id, status(undefined, { running: true, completionUnread: true, completionPendingAck: true })],
+    ])
+    const rows = deriveFlat(state, [parent.id], {
+      ...noRows, archivedSessionIds: [archivedChild.id],
+    }, statuses)
+    const child = (id: SessionId) => rows.find(row => row.id === id)!
+    expect(rows.map(row => row.id)).toEqual([parent.id, named.id, labelled.id, bare.id, archivedChild.id])
+    expect(child(named.id)).toMatchObject({
+      title: 'perf',
+      running: true,
+      completed: true,
+      awaitingAck: true,
+      cwd: '/work/named',
+      preview: 'latest child prompt',
+      depth: 1,
+      subagent: true,
+      parentId: parent.id,
+    })
+    expect(child(labelled.id).title).toBe('Labelled')
+    expect(child(bare.id).title).toBe('')
+    expect(child(bare.id).preview).toBeUndefined()
+    expect(child(archivedChild.id).archived).toBe(true)
+  })
+
+  it('marks the ordinary parent section current when a subagent child is selected', () => {
+    const parent = summary('parent', 1)
+    const child = { ...summary('child', 2), parentId: parent.id, origin: 'subagent' as const }
+    const state = withMain(withCatalog(list(parent, child), parent.id, 'child'), child.id)
+    const groups = deriveGroups(state, [workspace('first', ['parent'])], noRows, noAttention, view(['first']))
+    expect(groups[0]!.containsCurrent).toBe(true)
+    const sections = deriveCustomGroups(
+      state,
+      [{ id: 'custom:1', name: 'Group', sessionIds: [parent.id] }],
+      noRows,
+      noAttention,
+      view(['custom:1']),
+    )
+    expect(sections[0]!.containsCurrent).toBe(true)
+  })
+
+  it('resolves a subagent lineage to its ordinary root', () => {
+    const parent = summary('parent', 1)
+    const child = { ...summary('child', 2), parentId: parent.id, origin: 'subagent' as const }
+    const grandchild = { ...summary('grandchild', 3), parentId: child.id, origin: 'subagent' as const }
+    const fork = { ...summary('fork', 4), parentId: parent.id }
+    const cycleA = { ...summary('cycle-a', 5), parentId: sid('cycle-b'), origin: 'subagent' as const }
+    const cycleB = { ...summary('cycle-b', 6), parentId: cycleA.id, origin: 'subagent' as const }
+    const state = list(parent, child, grandchild, fork, cycleA, cycleB)
+    expect(rootSessionId(state, grandchild.id)).toBe(parent.id)
+    expect(rootSessionId(state, fork.id)).toBe(fork.id)
+    expect(rootSessionId(state, sid('missing'))).toBe(sid('missing'))
+    expect(rootSessionId(state, cycleA.id)).toBe(cycleA.id)
   })
 
   it('uses current child status only for members of the direct parent catalog', () => {

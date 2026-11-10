@@ -36,7 +36,7 @@ import type { ArchivedFilter, CustomGroupMembership, GroupNode, SessionNode, Ses
 import {
   deriveCustomGroups, deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningCustomGroupKey,
   owningGroupKey, owningParentFolder,
-  pinCurrentBlank, reconcileManualOrder, sessionMemberIds, UNGROUPED_KEY,
+  pinCurrentBlank, reconcileManualOrder, rootSessionId, sessionMemberIds, UNGROUPED_KEY,
 } from '../tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY, type SessionGroupBy } from '../stores.ts'
@@ -66,12 +66,20 @@ function watermarkRows(sessions: readonly SessionNode[], watermark: number): {
   hiddenCount: number
 } {
   let count = 0
+  let rootVisible = false
+  let hiddenCount = 0
   const rows = sessions.filter((session) => {
-    if (session.blank) return true
+    if ((session.depth ?? 0) > 0) return rootVisible
+    if (session.blank) {
+      rootVisible = true
+      return true
+    }
     count += 1
-    return count <= watermark || session.completed || session.awaitingAck
+    rootVisible = count <= watermark || session.completed || session.awaitingAck === true
+    if (!rootVisible) hiddenCount += 1
+    return rootVisible
   })
-  return { rows, hiddenCount: sessions.length - rows.length }
+  return { rows, hiddenCount }
 }
 
 /**
@@ -86,6 +94,9 @@ function requiredWatermark(
   let index = 0
   let required = 0
   for (const session of sessions) {
+    // Nested subagent children travel with their parent; only ordinary
+    // Sessions consume watermark slots and raise it.
+    if ((session.depth ?? 0) > 0) continue
     if (session.blank) continue
     index += 1
     const attention = index <= SESSION_WATERMARK_AUTO_MAX && (
@@ -317,12 +328,13 @@ function sessionDragOrder(
   drag: DragState,
   over: NonNullable<DragState['over']>,
 ): SessionId[] | undefined {
-  const source = rows.find(row => row.id === drag.sessionId)
-  const target = rows.find(row => row.id === over.id)
+  const roots = rows.filter(row => (row.depth ?? 0) === 0)
+  const source = roots.find(row => row.id === drag.sessionId)
+  const target = roots.find(row => row.id === over.id)
   if (source === undefined || target === undefined || source.blank
     || source.pinned !== drag.pinned || target.pinned !== drag.pinned
     || source.id === target.id || !order.includes(source.id)) return
-  const section = rows.filter(row => row.pinned === drag.pinned)
+  const section = roots.filter(row => row.pinned === drag.pinned)
   const sourceIndex = section.findIndex(row => row.id === source.id)
   const withoutSource = section.filter(row => row.id !== source.id)
   const insertAt = withoutSource.findIndex(row => row.id === target.id) + (over.half === 'after' ? 1 : 0)
@@ -331,7 +343,7 @@ function sessionDragOrder(
   const targetIndex = next.indexOf(target.id)
   if (targetIndex === -1) return
   next.splice(targetIndex + (over.half === 'after' ? 1 : 0), 0, source.id)
-  return pinCurrentBlank(next, rows.find(row => row.blank)?.id)
+  return pinCurrentBlank(next, roots.find(row => row.blank)?.id)
 }
 
 /** In-flight Workspace-row drag: source identity plus the current marker. */
@@ -427,9 +439,12 @@ function SessionTree({
   const current = panelActive
     ? undefined
     : Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
-  const revealGroup = revealSessionId === undefined || !workspaceReady
+  // A selected subagent highlights and reveals its ordinary ancestor's group.
+  const currentOwner = current === undefined ? undefined : rootSessionId(list, current)
+  const revealOwner = revealSessionId === undefined ? undefined : rootSessionId(list, revealSessionId)
+  const revealGroup = revealOwner === undefined || !workspaceReady
     ? undefined
-    : owningGroupKey(workspaces, revealSessionId)
+    : owningGroupKey(workspaces, revealOwner)
   // Per-group raised watermarks; an absent key means the base watermark.
   const [storedWatermarks, setStoredWatermarks] = useState<Readonly<Record<string, number>>>({})
   // Advances on user-driven watermark changes so AnimatedRows settles them; automatic raises animate.
@@ -442,9 +457,9 @@ function SessionTree({
   const nativeDragActive = drag !== null || workspaceDrag !== null
   useNativeDragAcceptance(nativeDragActive)
   useDragAutoScroll(nativeDragActive)
-  const currentGroup = current === undefined || !workspaceReady
+  const currentGroup = currentOwner === undefined || !workspaceReady
     ? undefined
-    : owningGroupKey(workspaces, current)
+    : owningGroupKey(workspaces, currentOwner)
   useEffect(() => {
     if (current === undefined || currentGroup === undefined || Object.hasOwn(groupExpansion, currentGroup)) return
     setGroupExpanded(currentGroup, true)
@@ -486,8 +501,8 @@ function SessionTree({
   }, [groupExpansion, parents, revealGroup, setGroupExpanded])
   const baselines = new Map(groups.map(group => [group.key, Math.max(SESSION_WATERMARK_BASE, requiredWatermark(
     group.sessions,
-    current,
-    group.key === revealGroup ? revealSessionId : undefined,
+    currentOwner,
+    group.key === revealGroup ? revealOwner : undefined,
   ))]))
   const foldedKeys = new Set(groups.filter(group => !group.expanded).map(group => group.key))
   const underFoldedAncestor = (key: string): boolean => {
@@ -685,7 +700,7 @@ function SessionTree({
           const compatibleTarget = sameGroupDrag && drag.pinned === node.pinned
           const normalizeHalf = (half: 'before' | 'after'): 'before' | 'after' =>
             node.blank ? 'after' : half
-          const dragProps = orderBy !== 'manual' ? undefined : {
+          const dragProps = orderBy !== 'manual' || node.subagent === true ? undefined : {
             start: () => {
               sessionDropCommitted.current = false
               setDrag({ accountKey: group.key, sessionId: node.id, pinned: node.pinned, over: null })
@@ -861,7 +876,7 @@ function FlatList({
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
               useSessionAccess={useSessionAccess}
-              drag={orderBy !== 'manual' ? undefined : {
+              drag={orderBy !== 'manual' || node.subagent === true ? undefined : {
                 start: () => {
                   dropCommitted.current = false
                   setDrag({ accountKey: FLAT_SESSION_ORDER_KEY, sessionId: node.id, pinned: node.pinned, over: null })
@@ -996,9 +1011,12 @@ function CustomGroupTree({
   const current = panelActive
     ? undefined
     : Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
-  const revealGroup = revealSessionId === undefined || !workspaceReady
+  // A selected subagent highlights and reveals its ordinary ancestor's group.
+  const currentOwner = current === undefined ? undefined : rootSessionId(list, current)
+  const revealOwner = revealSessionId === undefined ? undefined : rootSessionId(list, revealSessionId)
+  const revealGroup = revealOwner === undefined || !workspaceReady
     ? undefined
-    : owningCustomGroupKey(groups, revealSessionId)
+    : owningCustomGroupKey(groups, revealOwner)
   const [storedWatermarks, setStoredWatermarks] = useState<Readonly<Record<string, number>>>({})
   const [watermarkMotionKey, setWatermarkMotionKey] = useState(0)
   const [drag, setDrag] = useState<GroupDragState | null>(null)
@@ -1007,9 +1025,9 @@ function CustomGroupTree({
   const orderDropCommitted = useRef(false)
   useNativeDragAcceptance(drag !== null || orderDrag !== null)
   useDragAutoScroll(drag !== null || orderDrag !== null)
-  const currentGroup = current === undefined || !workspaceReady
+  const currentGroup = currentOwner === undefined || !workspaceReady
     ? undefined
-    : owningCustomGroupKey(groups, current)
+    : owningCustomGroupKey(groups, currentOwner)
   useEffect(() => {
     if (currentGroup === undefined || Object.hasOwn(groupExpansion, currentGroup)) return
     setGroupExpanded(currentGroup, true)
@@ -1030,8 +1048,8 @@ function CustomGroupTree({
   )
   const baselines = new Map(sections.map(section => [section.key, Math.max(SESSION_WATERMARK_BASE, requiredWatermark(
     section.sessions,
-    current,
-    section.key === revealGroup ? revealSessionId : undefined,
+    currentOwner,
+    section.key === revealGroup ? revealOwner : undefined,
   ))]))
   const requiredWatermarks = new Map(
     [...baselines].filter(([key]) => sections.some(section => section.key === key && section.expanded)),
@@ -1048,7 +1066,8 @@ function CustomGroupTree({
   /** The id a drop should insert before inside one section, or undefined to append. */
   const beforeIdFor = (sectionKey: string, overId: SessionId, half: 'before' | 'after'): SessionId | undefined => {
     if (half === 'before') return overId
-    const order = sections.find(section => section.key === sectionKey)?.sessions ?? []
+    const order = (sections.find(section => section.key === sectionKey)?.sessions ?? [])
+      .filter(candidate => (candidate.depth ?? 0) === 0)
     const index = order.findIndex(candidate => candidate.id === overId)
     return index === -1 ? undefined : order[index + 1]?.id
   }
@@ -1200,7 +1219,7 @@ function CustomGroupTree({
             {visible.rows.map((node) => {
               // A same-section drop stays inside the row's own pinned block; a
               // cross-section drop is a move and any row accepts it.
-              const accepts = drag !== null && (
+              const accepts = node.subagent !== true && drag !== null && (
                 drag.from !== section.key || (orderBy === 'manual' && drag.pinned === node.pinned)
               )
               return (
@@ -1219,7 +1238,7 @@ function CustomGroupTree({
                   onReveal={node.id === revealSessionId && section.key === revealGroup
                     ? () => { onSessionRevealed(node.id) }
                     : undefined}
-                  drag={{
+                  drag={node.subagent === true ? undefined : {
                     start: () => {
                       dropCommitted.current = false
                       setDrag({
