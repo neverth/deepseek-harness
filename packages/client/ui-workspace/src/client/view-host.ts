@@ -70,13 +70,18 @@ export function mirrorViewSnapshots(workspaces: IWorkspaces, view: WorkspaceView
   // pushed. Ask the Host first and skip the opening push when it already holds
   // groups; later edits still replace the document, so a real deletion
   // propagates.
-  void workspaces.listGroups().then((hostGroups) => {
+  // The call sits inside an async function so a missing or throwing Remote
+  // method rejects this task instead of escaping `apply` synchronously and
+  // taking the whole sidebar plugin down with it.
+  const seedGroups = async (): Promise<void> => {
+    const hostGroups = await workspaces.listGroups()
     if (groupDocument().length === 0 && hostGroups.length > 0) {
       pushedGroups = '[]'
       return
     }
     pushGroups()
-  }).catch((error: unknown) => {
+  }
+  void seedGroups().catch((error: unknown) => {
     // Without the Host's current document, an empty opening push could erase
     // it; keep the local copy and let the next real edit replace the document.
     console.error('[ui-workspace] reading the Host group document failed:', error)

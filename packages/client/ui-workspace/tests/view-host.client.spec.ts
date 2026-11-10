@@ -74,6 +74,22 @@ describe('mirrorViewSnapshots', () => {
     dispose()
   })
 
+  it('survives a Host group reader that throws synchronously', async () => {
+    vi.useFakeTimers()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const workspaces = new TestWorkspaces(stabilize)
+    workspaces.stub('listGroups', () => { throw new Error('missing method') })
+    const view = createWorkspaceViewStore().create()
+    const dispose = mirrorViewSnapshots(workspaces, view)
+    await flush()
+    expect(error).toHaveBeenCalledWith(
+      '[ui-workspace] reading the Host group document failed:',
+      expect.objectContaining({ message: 'missing method' }),
+    )
+    expect(pushedGroups(workspaces)).toEqual([])
+    dispose()
+  })
+
   it('does not push a document the Host already stored', async () => {
     vi.useFakeTimers()
     const workspaces = new TestWorkspaces(stabilize)
