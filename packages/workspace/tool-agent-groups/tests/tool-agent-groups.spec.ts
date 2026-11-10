@@ -88,6 +88,15 @@ function text(result: Awaited<ReturnType<typeof execute>>): string {
   return result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
 }
 
+describe('plugin exports', () => {
+  it('exports only the named plugin face the preset loader consumes', () => {
+    // The loader reads `apply`/`inject` from named exports; a default export
+    // becomes the plugin itself and silently drops the injection declaration.
+    expect(toolAgentGroups.inject).toEqual(['tools', 'agentGroups', 'sessionQuery'])
+    expect('default' in toolAgentGroups).toBe(false)
+  })
+})
+
 describe('group_members', () => {
   it('reports a null group when the calling Session is ungrouped', async () => {
     const { ctx, agent, readTitleSnapshots } = await harness(undefined)

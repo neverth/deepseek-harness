@@ -118,5 +118,3 @@ export function apply(ctx: Context, _config: Config = {}): void {
     },
   }))
 }
-
-export default apply
