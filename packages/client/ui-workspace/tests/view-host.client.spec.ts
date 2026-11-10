@@ -58,6 +58,30 @@ describe('mirrorViewSnapshots', () => {
     dispose()
   })
 
+  it('leaves an existing Host document alone when this browser holds a stale copy', async () => {
+    vi.useFakeTimers()
+    const workspaces = new TestWorkspaces(stabilize)
+    workspaces.stub('listGroups', async () => [{ id: 'custom:1', name: 'Renamed elsewhere', sessionIds: [] }])
+    const view = createWorkspaceViewStore().create()
+    view.actions.createCustomGroup('Stale')
+    const dispose = mirrorViewSnapshots(workspaces, view)
+    await flush()
+    expect(pushedGroups(workspaces)).toEqual([])
+
+    // An unrelated view change must not write the stale document either.
+    view.actions.setGroupExpanded('custom:1', false)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flush()
+    expect(pushedGroups(workspaces)).toEqual([])
+
+    // A real edit is this browser's own decision and replaces the document.
+    view.actions.renameCustomGroup('custom:1', 'Edited')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flush()
+    expect(pushedGroups(workspaces)).toEqual([[{ id: 'custom:1', name: 'Edited', sessionIds: [] }]])
+    dispose()
+  })
+
   it('keeps the opening push quiet when the Host document cannot be read', async () => {
     vi.useFakeTimers()
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -106,7 +130,7 @@ describe('mirrorViewSnapshots', () => {
     dispose()
   })
 
-  it('reports a refused push and retries it on the next interval', async () => {
+  it('reports a refused push and retries it on the next edit, not on a timer', async () => {
     vi.useFakeTimers()
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const workspaces = new TestWorkspaces(stabilize)
@@ -119,7 +143,14 @@ describe('mirrorViewSnapshots', () => {
       '[ui-workspace] saving the Host group document failed:',
       expect.objectContaining({ message: 'Host unavailable' }),
     )
+    expect(pushedGroups(workspaces)).toHaveLength(1)
 
+    view.actions.renameCustomGroup('custom:1', 'Release 2')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flush()
+    expect(pushedGroups(workspaces)).toHaveLength(2)
+
+    // The snapshot interval never re-pushes a group document on its own.
     await vi.advanceTimersByTimeAsync(5 * 60_000)
     await flush()
     expect(pushedGroups(workspaces)).toHaveLength(2)

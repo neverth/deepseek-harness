@@ -65,32 +65,36 @@ export function mirrorViewSnapshots(workspaces: IWorkspaces, view: WorkspaceView
     groupTimer = setTimeout(pushGroups, GROUPS_DEBOUNCE_MS)
   }
 
-  // A browser with no local groups must not erase the Host's mapping — a fresh
-  // tab or a second machine would otherwise wipe what the owning browser last
-  // pushed. Ask the Host first and skip the opening push when it already holds
-  // groups; later edits still replace the document, so a real deletion
-  // propagates.
+  // The Host already holding a document means another browser (or an earlier
+  // session of this one) is the current owner. A newly opened tab, a second
+  // machine, or a stale copy must not replace it on open, or a rename made in
+  // one browser would flip back whenever another one loads. Only a later real
+  // edit in this browser writes the document; a Host without groups still
+  // seeds from this browser's local copy.
   // The call sits inside an async function so a missing or throwing Remote
   // method rejects this task instead of escaping `apply` synchronously and
   // taking the whole sidebar plugin down with it.
   const seedGroups = async (): Promise<void> => {
     const hostGroups = await workspaces.listGroups()
-    if (groupDocument().length === 0 && hostGroups.length > 0) {
-      pushedGroups = '[]'
+    if (hostGroups.length > 0) {
+      // Record the local copy as already pushed so unrelated view changes do
+      // not schedule a replacement of the Host's document.
+      pushedGroups = JSON.stringify(groupDocument())
       return
     }
     pushGroups()
   }
   void seedGroups().catch((error: unknown) => {
-    // Without the Host's current document, an empty opening push could erase
-    // it; keep the local copy and let the next real edit replace the document.
+    // Without the Host's current document, an opening push could erase it;
+    // keep the local copy and let the next real edit replace the document.
     console.error('[ui-workspace] reading the Host group document failed:', error)
-    pushedGroups = '[]'
+    pushedGroups = JSON.stringify(groupDocument())
   })
   const unsubscribe = view.subscribe(scheduleGroups)
+  // Group documents are pushed on edits only. A periodic re-push from every
+  // open tab would let a stale copy overwrite a rename made in another one.
   const timer = setInterval(() => {
     void saveSnapshot(workspaces, view)
-    pushGroups()
   }, SNAPSHOT_INTERVAL_MS)
   return () => {
     clearInterval(timer)
