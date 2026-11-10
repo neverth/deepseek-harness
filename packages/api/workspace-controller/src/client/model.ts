@@ -5,6 +5,8 @@ import type {} from '@deepseek-ai/dsh-api-workspace-controller/remote'
 import { isRemoteFailure } from '@deepseek-ai/dsh-api-gateway/client'
 import type { RemoteFailure, RemoteResult, TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {
+  AgentGroupView,
+  AgentGroupsValue,
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceBaseline,
@@ -266,6 +268,15 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
    */
   saveViewSnapshot(document: WorkspaceViewDocument): Promise<RemoteResult<WorkspaceViewSnapshot | undefined>> {
     return this.remote.saveViewSnapshot({ document })
+  }
+
+  /**
+   * Push this browser's complete hand-made group document.
+   * @param groups - the complete current group document.
+   * @returns generated Remote result carrying the stored document.
+   */
+  saveGroups(groups: readonly AgentGroupView[]): Promise<RemoteResult<AgentGroupsValue>> {
+    return this.remote.saveGroups({ groups })
   }
 
   /**

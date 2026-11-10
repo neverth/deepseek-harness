@@ -26,6 +26,7 @@
     { "path": "../../util/deque" },
     { "path": "../../util/native-command" },
     { "path": "../../util/values" },
+    { "path": "../../workspace/agent-groups" },
     { "path": "../../workspace/workspace" }
   ]
 }

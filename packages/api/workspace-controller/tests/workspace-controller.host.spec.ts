@@ -4,6 +4,7 @@ import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import AgentGroupRegistry from '@deepseek-ai/dsh-agent-groups'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { RemoteError, type PeerId, type Principal, type RemoteInvocation } from '@deepseek-ai/dsh-typert-protocol'
@@ -64,6 +65,7 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
   ctx.provide('storageDomain', storageDomain)
   ctx.provide('sessionPersistence', { list: () => Promise.resolve([]) } as never)
   await ctx.plugin(WorkspaceRegistry)
+  await ctx.plugin(AgentGroupRegistry)
   const dispose = (): void => {}
   ctx.provide('typert', {
     lookups: { configure: () => dispose },
@@ -578,6 +580,19 @@ describe('WorkspaceController follow', () => {
     await ctx.fiber.dispose()
     roots.splice(roots.indexOf(ctx), 1)
     await expect(closing).resolves.toEqual({ done: true, value: undefined })
+  })
+})
+
+describe('hand-made groups', () => {
+  it('stores the complete group document and rejects a Session placed in two groups', async () => {
+    const { controller, ctx } = await harness()
+    const groups = [{ id: 'custom:1', name: 'Release', sessionIds: [SessionId('s1'), SessionId('s2')] }]
+    await expect(controller.saveGroups({ groups })).resolves.toMatchObject({ groups })
+    expect(ctx.agentGroups.groupOf(SessionId('s2'))?.id).toBe('custom:1')
+
+    const conflicting = [...groups, { id: 'custom:2', name: 'Other', sessionIds: [SessionId('s2')] }]
+    await expect(controller.saveGroups({ groups: conflicting })).rejects.toThrow(/appears in groups/)
+    expect(ctx.agentGroups.list()).toHaveLength(1)
   })
 })
 

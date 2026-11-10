@@ -117,6 +117,8 @@
             name: '@deepseek-ai/dsh-tool-todo'
             config:
               allowParallelInProgress: true
+          - id: tool-agent-groups
+            name: '@deepseek-ai/dsh-tool-agent-groups'
           - id: tool-web
             name: '@deepseek-ai/dsh-tool-web'
             config:

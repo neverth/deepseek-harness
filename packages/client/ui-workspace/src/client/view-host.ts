@@ -1,28 +1,83 @@
 /**
- * Periodic snapshot mirror for the sidebar view store. The browser keeps
- * working from its own localStorage copy — that copy stays the source of
- * truth for what the user sees — and the Host keeps the newest snapshots so a
- * lost browser copy stays recoverable.
+ * Host mirrors of the sidebar view store. The browser keeps working from its
+ * own localStorage copy — that copy stays the source of truth for what the
+ * user sees — and the Host keeps the newest view snapshots so a lost browser
+ * copy stays recoverable. The Host also stores the current hand-made group
+ * document, because tools read that mapping to learn which sessions share a
+ * group.
  * @module
  */
 
-import type { IWorkspaces, WorkspaceViewDocument } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type {
+  AgentGroupView, IWorkspaces, WorkspaceViewDocument,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceViewInstance } from './stores.ts'
 
 /** How often one browser pushes its current view document to the Host. */
 const SNAPSHOT_INTERVAL_MS = 5 * 60_000
 
+/** How long a group edit waits before one push, coalescing a drag's repeated updates. */
+const GROUPS_DEBOUNCE_MS = 1_000
+
 /**
- * Push this browser's view document to the Host on a timer.
- * @param workspaces - Client Workspace service carrying the snapshot Remote method.
+ * Push this browser's view document and hand-made groups to the Host.
+ * @param workspaces - Client Workspace service carrying the snapshot Remote methods.
  * @param view - the browser's single view-store instance.
- * @returns the disposer stopping the timer; it must run on plugin teardown.
+ * @returns the disposer stopping the timer and subscription; it must run on plugin teardown.
  */
 export function mirrorViewSnapshots(workspaces: IWorkspaces, view: WorkspaceViewInstance): () => void {
+  let pushedGroups: string | undefined
+  let groupTimer: ReturnType<typeof setTimeout> | undefined
+  let pending: Promise<void> = Promise.resolve()
+
+  const groupDocument = (): AgentGroupView[] => {
+    const state = view.getSnapshot()
+    return state.customGroups.map(group => ({
+      id: group.id,
+      name: group.name,
+      sessionIds: (state.customMembers[group.id] ?? []).map(sessionId => SessionId(sessionId)),
+    }))
+  }
+
+  const pushGroups = (): void => {
+    const groups = groupDocument()
+    const encoded = JSON.stringify(groups)
+    if (encoded === pushedGroups) return
+    pending = pending.then(async () => {
+      try {
+        await workspaces.saveGroups(groups)
+        pushedGroups = encoded
+      } catch (error) {
+        // The Host copy enables model-facing group reads, not rendering: a
+        // refused push leaves the browser's own grouping untouched, and the
+        // next edit or interval tick tries again.
+        console.error('[ui-workspace] saving the Host group document failed:', error)
+      }
+    })
+  }
+
+  // Group edits arrive in bursts (a drag reorders members several times), so
+  // one push follows the quiet period instead of each intermediate document.
+  const scheduleGroups = (): void => {
+    if (JSON.stringify(groupDocument()) === pushedGroups) return
+    clearTimeout(groupTimer)
+    groupTimer = setTimeout(pushGroups, GROUPS_DEBOUNCE_MS)
+  }
+
+  // The local copy may predate this Host process, so seed the Host mapping
+  // immediately rather than waiting for the next edit.
+  pushGroups()
+  const unsubscribe = view.subscribe(scheduleGroups)
   const timer = setInterval(() => {
     void saveSnapshot(workspaces, view)
+    pushGroups()
   }, SNAPSHOT_INTERVAL_MS)
-  return () => { clearInterval(timer) }
+  return () => {
+    clearInterval(timer)
+    clearTimeout(groupTimer)
+    unsubscribe()
+  }
 }
 
 /**

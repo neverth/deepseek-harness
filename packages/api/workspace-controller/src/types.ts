@@ -111,6 +111,26 @@ export interface WorkspaceViewSnapshotRequest {
   readonly document: WorkspaceViewDocument
 }
 
+/** One hand-made sidebar group as the Host stores it. */
+export interface AgentGroupView {
+  /** Browser-local identity; prefixed so it never collides with a Workspace id. */
+  readonly id: string
+  /** User-visible group name. */
+  readonly name: string
+  /** Member Session ids in the user's arranged order. */
+  readonly sessionIds: readonly SessionId[]
+}
+
+/** Complete hand-made group document accepted from and echoed to a browser. */
+export interface AgentGroupsValue {
+  readonly groups: readonly AgentGroupView[]
+}
+
+/** One client's push of its complete hand-made group document. */
+export interface WorkspaceSaveGroupsRequest {
+  readonly groups: readonly AgentGroupView[]
+}
+
 /** DOM-insertBefore-like Session membership order mutation. */
 export interface WorkspaceInsertSessionBeforeRequest {
   readonly workspaceId: WorkspaceId

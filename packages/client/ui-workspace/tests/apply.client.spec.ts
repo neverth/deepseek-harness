@@ -147,6 +147,8 @@ async function bench(access: 'fake' | 'static' = 'fake') {
     pinSession,
     unpinSession,
     insertSessionBefore: vi.fn(async () => ({})),
+    saveViewSnapshot: vi.fn(async () => undefined),
+    saveGroups: vi.fn(async () => undefined),
   } as never)
   ctx.provide('sessions', {
     list: { getSnapshot: () => sessionSnapshot, subscribe },

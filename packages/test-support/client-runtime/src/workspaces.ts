@@ -1,7 +1,7 @@
 /** Test-owned workspaces face: the renderer standard-kit observable plus recorded actions. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {
-  IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView, WorkspaceViewDocument,
+  AgentGroupView, IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView, WorkspaceViewDocument,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -212,5 +212,11 @@ export class TestWorkspaces implements IWorkspaces {
     this.calls.push({ method: 'saveViewSnapshot', args: [document] })
     const stub = this.stubs.get('saveViewSnapshot')
     if (stub !== undefined) await (stub(document) as Promise<void>)
+  }
+
+  async saveGroups(groups: readonly AgentGroupView[]): Promise<void> {
+    this.calls.push({ method: 'saveGroups', args: [groups] })
+    const stub = this.stubs.get('saveGroups')
+    if (stub !== undefined) await (stub(groups) as Promise<void>)
   }
 }

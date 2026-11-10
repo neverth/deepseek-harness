@@ -4,6 +4,8 @@ import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
+// Type-only: resolves the required ctx.agentGroups service declaration.
+import type {} from '@deepseek-ai/dsh-agent-groups'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { WorkspaceCommands } from './commands.ts'
 import { DirectoryPickerController } from './directory-picker.ts'
@@ -11,6 +13,7 @@ import { WorkspaceFeed, workspaceView } from './feed.ts'
 import { WorkspaceViewStore } from './view.ts'
 import { defaultWorkspaceDirectory, validateDocumentsDirectory } from './default-directory.ts'
 import type {
+  AgentGroupsValue,
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceBaseline,
@@ -29,6 +32,7 @@ import type {
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
   WorkspaceValue,
+  WorkspaceSaveGroupsRequest,
   WorkspaceViewSnapshot,
   WorkspaceViewSnapshotRequest,
 } from './types.ts'
@@ -57,7 +61,7 @@ declare module '@deepseek-ai/cordis' {
 
 /** Host service backing the generated `ctx.remote.workspace` namespace. */
 export class WorkspaceController extends TypertRemoteService {
-  static inject = ['remoteAccess', 'typert', 'workspaceRegistry', 'storageDomain']
+  static inject = ['remoteAccess', 'typert', 'workspaceRegistry', 'storageDomain', 'agentGroups']
 
   static Config: z<Config, ResolvedConfig> = z.object({
     documentsDirectory: z.string(),
@@ -206,6 +210,17 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote('saveViewSnapshot')
   saveViewSnapshot(request: WorkspaceViewSnapshotRequest): Promise<WorkspaceViewSnapshot | undefined> {
     return this.view.record(request.document)
+  }
+
+  /**
+   * Replace the Host's hand-made group document with one browser's current
+   * grouping, so tools can read which Sessions share a group.
+   * @param request - the pushing browser's complete group document.
+   * @returns the stored document.
+   */
+  @Remote('saveGroups')
+  async saveGroups(request: WorkspaceSaveGroupsRequest): Promise<AgentGroupsValue> {
+    return { groups: await this.ctx.agentGroups.replace(request.groups) }
   }
 
   /**

@@ -4,7 +4,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { WorkspaceView, WorkspaceViewDocument } from '../types.ts'
+import type { AgentGroupView, WorkspaceView, WorkspaceViewDocument } from '../types.ts'
 import type { ClientWorkspaceModel, WorkspaceSnapshot } from './model.ts'
 
 /** Structured create failure for callers that distinguish Host business errors. */
@@ -107,6 +107,12 @@ export interface IWorkspaces {
    */
   saveViewSnapshot(document: WorkspaceViewDocument): Promise<void>
   /**
+   * Push this browser's complete hand-made group document to the Host, which
+   * tools read to learn which Sessions share a group.
+   * @param groups - the complete current group document.
+   */
+  saveGroups(groups: readonly AgentGroupView[]): Promise<void>
+  /**
    * Move a Session within one Workspace account.
    * @param workspaceId - owning Workspace.
    * @param sessionId - Session to move.
@@ -184,6 +190,11 @@ export class WorkspaceController extends Service implements IWorkspaces {
   async saveViewSnapshot(document: WorkspaceViewDocument): Promise<void> {
     const result = await this.model.saveViewSnapshot(document)
     if (!result.ok) throw commandError('view snapshot', result.error)
+  }
+
+  async saveGroups(groups: readonly AgentGroupView[]): Promise<void> {
+    const result = await this.model.saveGroups(groups)
+    if (!result.ok) throw commandError('groups save', result.error)
   }
 
   async insertSessionBefore(

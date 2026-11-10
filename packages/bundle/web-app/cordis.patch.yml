@@ -87,6 +87,11 @@
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'
 
+    # Hand-made sidebar group membership as a Host fact. The browser owns the
+    # grouping UI and pushes its document; tools read the durable mapping.
+    - id: agent-groups
+      name: '@deepseek-ai/dsh-agent-groups'
+
     - id: session-reference
       name: '@deepseek-ai/dsh-session-reference'
 

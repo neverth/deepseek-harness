@@ -3,6 +3,7 @@ import {
   ClientWorkspaceModel, type WorkspaceRemote,
 } from '../src/client/index.ts'
 import type {
+  AgentGroupsValue,
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceCreateRequest,
@@ -18,6 +19,7 @@ import type {
   WorkspaceRenameRequest,
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
+  WorkspaceSaveGroupsRequest,
   WorkspaceValue,
   WorkspaceId,
   WorkspaceView,
@@ -160,6 +162,16 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   ): Promise<RemoteResult<WorkspaceViewSnapshot>> {
     this.record('saveViewSnapshot', request)
     return this.onSaveViewSnapshot(request)
+  }
+
+  onSaveGroups: (
+    request: WorkspaceSaveGroupsRequest,
+  ) => Promise<RemoteResult<AgentGroupsValue>> = request =>
+    Promise.resolve(remoteOk({ groups: request.groups }))
+
+  saveGroups(request: WorkspaceSaveGroupsRequest): Promise<RemoteResult<AgentGroupsValue>> {
+    this.record('saveGroups', request)
+    return this.onSaveGroups(request)
   }
 
   follow(_signal?: AbortSignal): RemoteStreamHandle<WorkspaceFollowFrame, never> {
