@@ -271,6 +271,14 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
   }
 
   /**
+   * Read the Host's current hand-made group document.
+   * @returns generated Remote result carrying the stored document.
+   */
+  listGroups(): Promise<RemoteResult<AgentGroupsValue>> {
+    return this.remote.listGroups()
+  }
+
+  /**
    * Push this browser's complete hand-made group document.
    * @param groups - the complete current group document.
    * @returns generated Remote result carrying the stored document.

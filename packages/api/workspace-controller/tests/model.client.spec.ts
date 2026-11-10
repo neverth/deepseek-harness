@@ -164,6 +164,11 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
     return this.onSaveViewSnapshot(request)
   }
 
+  listGroups(): Promise<RemoteResult<AgentGroupsValue>> {
+    this.record('listGroups', {})
+    return Promise.resolve(remoteOk({ groups: [] }))
+  }
+
   onSaveGroups: (
     request: WorkspaceSaveGroupsRequest,
   ) => Promise<RemoteResult<AgentGroupsValue>> = request =>

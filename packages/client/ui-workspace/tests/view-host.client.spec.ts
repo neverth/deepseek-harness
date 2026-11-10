@@ -41,6 +41,39 @@ describe('mirrorViewSnapshots', () => {
     dispose()
   })
 
+  it('does not erase an existing Host document from a browser with no local groups', async () => {
+    vi.useFakeTimers()
+    const workspaces = new TestWorkspaces(stabilize)
+    workspaces.stub('listGroups', async () => [{ id: 'custom:9', name: 'Host', sessionIds: [] }])
+    const view = createWorkspaceViewStore().create()
+    const dispose = mirrorViewSnapshots(workspaces, view)
+    await flush()
+    expect(pushedGroups(workspaces)).toEqual([])
+
+    // A real edit still replaces the document, including a later clear.
+    view.actions.createCustomGroup('Release')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flush()
+    expect(pushedGroups(workspaces)).toEqual([[{ id: 'custom:1', name: 'Release', sessionIds: [] }]])
+    dispose()
+  })
+
+  it('keeps the opening push quiet when the Host document cannot be read', async () => {
+    vi.useFakeTimers()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const workspaces = new TestWorkspaces(stabilize)
+    workspaces.stub('listGroups', () => Promise.reject(new Error('Host unavailable')))
+    const view = createWorkspaceViewStore().create()
+    const dispose = mirrorViewSnapshots(workspaces, view)
+    await flush()
+    expect(error).toHaveBeenCalledWith(
+      '[ui-workspace] reading the Host group document failed:',
+      expect.objectContaining({ message: 'Host unavailable' }),
+    )
+    expect(pushedGroups(workspaces)).toEqual([])
+    dispose()
+  })
+
   it('does not push a document the Host already stored', async () => {
     vi.useFakeTimers()
     const workspaces = new TestWorkspaces(stabilize)

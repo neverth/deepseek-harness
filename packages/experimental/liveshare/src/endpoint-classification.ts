@@ -132,6 +132,7 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'workspace/insertSessionBefore': 'owner-only', // owner reorders Sessions
   'workspace/pinSession': 'owner-only', // owner pins a Session
   'workspace/rename': 'owner-only', // owner renames a Workspace
+  'workspace/listGroups': 'owner-only', // owner reads hand-made sidebar group membership
   'workspace/saveGroups': 'owner-only', // owner records hand-made sidebar group membership
   'workspace/saveViewSnapshot': 'owner-only', // owner backs up the browser's view state
   'workspace/unarchiveSession': 'owner-only', // owner unarchives a Session

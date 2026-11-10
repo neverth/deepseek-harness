@@ -213,6 +213,15 @@ export class WorkspaceController extends TypertRemoteService {
   }
 
   /**
+   * Read the Host's current hand-made group document.
+   * @returns the stored document.
+   */
+  @Remote('listGroups')
+  listGroups(): AgentGroupsValue {
+    return { groups: this.ctx.agentGroups.list() }
+  }
+
+  /**
    * Replace the Host's hand-made group document with one browser's current
    * grouping, so tools can read which Sessions share a group.
    * @param request - the pushing browser's complete group document.

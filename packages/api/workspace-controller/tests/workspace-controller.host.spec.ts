@@ -588,6 +588,7 @@ describe('hand-made groups', () => {
     const { controller, ctx } = await harness()
     const groups = [{ id: 'custom:1', name: 'Release', sessionIds: [SessionId('s1'), SessionId('s2')] }]
     await expect(controller.saveGroups({ groups })).resolves.toMatchObject({ groups })
+    expect(controller.listGroups()).toMatchObject({ groups })
     expect(ctx.agentGroups.groupOf(SessionId('s2'))?.id).toBe('custom:1')
 
     const conflicting = [...groups, { id: 'custom:2', name: 'Other', sessionIds: [SessionId('s2')] }]

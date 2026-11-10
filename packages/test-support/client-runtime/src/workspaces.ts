@@ -214,6 +214,12 @@ export class TestWorkspaces implements IWorkspaces {
     if (stub !== undefined) await (stub(document) as Promise<void>)
   }
 
+  async listGroups(): Promise<readonly AgentGroupView[]> {
+    this.calls.push({ method: 'listGroups', args: [] })
+    const stub = this.stubs.get('listGroups')
+    return stub === undefined ? [] : await (stub() as Promise<readonly AgentGroupView[]>)
+  }
+
   async saveGroups(groups: readonly AgentGroupView[]): Promise<void> {
     this.calls.push({ method: 'saveGroups', args: [groups] })
     const stub = this.stubs.get('saveGroups')

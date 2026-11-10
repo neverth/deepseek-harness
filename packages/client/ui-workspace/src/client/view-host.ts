@@ -65,9 +65,23 @@ export function mirrorViewSnapshots(workspaces: IWorkspaces, view: WorkspaceView
     groupTimer = setTimeout(pushGroups, GROUPS_DEBOUNCE_MS)
   }
 
-  // The local copy may predate this Host process, so seed the Host mapping
-  // immediately rather than waiting for the next edit.
-  pushGroups()
+  // A browser with no local groups must not erase the Host's mapping — a fresh
+  // tab or a second machine would otherwise wipe what the owning browser last
+  // pushed. Ask the Host first and skip the opening push when it already holds
+  // groups; later edits still replace the document, so a real deletion
+  // propagates.
+  void workspaces.listGroups().then((hostGroups) => {
+    if (groupDocument().length === 0 && hostGroups.length > 0) {
+      pushedGroups = '[]'
+      return
+    }
+    pushGroups()
+  }).catch((error: unknown) => {
+    // Without the Host's current document, an empty opening push could erase
+    // it; keep the local copy and let the next real edit replace the document.
+    console.error('[ui-workspace] reading the Host group document failed:', error)
+    pushedGroups = '[]'
+  })
   const unsubscribe = view.subscribe(scheduleGroups)
   const timer = setInterval(() => {
     void saveSnapshot(workspaces, view)

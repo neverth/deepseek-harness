@@ -200,6 +200,7 @@ class FakeWorkspaces implements IWorkspaces {
   declare readonly insertBefore: IWorkspaces['insertBefore']
   declare readonly insertSessionBefore: IWorkspaces['insertSessionBefore']
   declare readonly saveViewSnapshot: IWorkspaces['saveViewSnapshot']
+  declare readonly listGroups: IWorkspaces['listGroups']
   declare readonly saveGroups: IWorkspaces['saveGroups']
   readonly pinCalls: SessionId[] = []
   readonly unpinCalls: SessionId[] = []

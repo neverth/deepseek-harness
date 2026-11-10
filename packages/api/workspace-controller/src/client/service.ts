@@ -107,6 +107,11 @@ export interface IWorkspaces {
    */
   saveViewSnapshot(document: WorkspaceViewDocument): Promise<void>
   /**
+   * Read the Host's current hand-made group document.
+   * @returns the stored groups.
+   */
+  listGroups(): Promise<readonly AgentGroupView[]>
+  /**
    * Push this browser's complete hand-made group document to the Host, which
    * tools read to learn which Sessions share a group.
    * @param groups - the complete current group document.
@@ -190,6 +195,12 @@ export class WorkspaceController extends Service implements IWorkspaces {
   async saveViewSnapshot(document: WorkspaceViewDocument): Promise<void> {
     const result = await this.model.saveViewSnapshot(document)
     if (!result.ok) throw commandError('view snapshot', result.error)
+  }
+
+  async listGroups(): Promise<readonly AgentGroupView[]> {
+    const result = await this.model.listGroups()
+    if (!result.ok) throw commandError('groups read', result.error)
+    return result.value.groups
   }
 
   async saveGroups(groups: readonly AgentGroupView[]): Promise<void> {
