@@ -10,6 +10,16 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { defineDomain } from '@deepseek-ai/dsh-storage-domain'
 
+/**
+ * One directory name below a Workspace's `.tmp` root. It becomes one path
+ * segment, so separators and the two relative-directory names are rejected at
+ * the durable boundary.
+ */
+const agentGroupDirectoryName = z.string().min(1).refine(
+  value => value !== '.' && value !== '..' && !value.includes('/') && !value.includes('\\'),
+  { message: 'a shared directory name must be one path segment' },
+)
+
 /** One hand-made group: its browser-local identity, name, and ordered members. */
 export const agentGroupRecord = z.object({
   /** Browser-local identity, prefixed by the browser store so it never collides with a Workspace id. */
@@ -18,6 +28,12 @@ export const agentGroupRecord = z.object({
   name: z.string(),
   /** Member Session ids in the order the user arranged them. */
   sessionIds: z.array(z.string().transform(value => brandString<SessionId>(value))),
+  /**
+   * Stable directory name below each owning Workspace's `.tmp` root, assigned
+   * once by the Host on first use and kept across renames. Absent until the
+   * Host materializes the shared directory for this group.
+   */
+  dirName: agentGroupDirectoryName.optional(),
 }).strict()
 
 /** One durable hand-made group, inferred from {@link agentGroupRecord}. */

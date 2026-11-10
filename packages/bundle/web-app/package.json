@@ -55,6 +55,7 @@
     }
   },
   "dependencies": {
+    "@deepseek-ai/dsh-agent-group-workspace": "workspace:*",
     "@deepseek-ai/dsh-agent-groups": "workspace:*",
     "@deepseek-ai/dsh-agent-instructions": "workspace:*",
     "@deepseek-ai/dsh-agent-preset": "workspace:*",

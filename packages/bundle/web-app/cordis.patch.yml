@@ -92,6 +92,11 @@
     - id: agent-groups
       name: '@deepseek-ai/dsh-agent-groups'
 
+    # One shared `.tmp/<group>` directory per hand-made group inside the
+    # Workspace owning each Session, stated to the model as runtime context.
+    - id: agent-group-workspace
+      name: '@deepseek-ai/dsh-agent-group-workspace'
+
     - id: session-reference
       name: '@deepseek-ai/dsh-session-reference'
 

@@ -419,6 +419,7 @@
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],
       "@deepseek-ai/dsh-agent": ["./packages/core/agent/src"],
       "@deepseek-ai/dsh-agent-default-model": ["./packages/core/agent-default-model/src"],
+      "@deepseek-ai/dsh-agent-group-workspace": ["./packages/workspace/agent-group-workspace/src"],
       "@deepseek-ai/dsh-agent-groups": ["./packages/workspace/agent-groups/src"],
       "@deepseek-ai/dsh-agent-instructions": ["./packages/context/agent-instructions/src"],
       "@deepseek-ai/dsh-agent-loop": ["./packages/core/agent-loop/src"],

@@ -180,6 +180,7 @@ const CONTEXT_ORDERS = {
   APPROVAL_POLICY: 115,
   SUBAGENT_DELEGATION: 120,
   AGENT_GROUPS: 125,
+  AGENT_GROUPS_TEMP: 126,
   // Process-specific paths and endpoints stay out of the cached system prompt.
   HARNESS_SOURCE: 200,
   WEB_SURFACE: 210,
