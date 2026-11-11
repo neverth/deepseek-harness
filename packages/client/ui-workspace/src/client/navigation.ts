@@ -423,8 +423,10 @@ class UiWorkspaceService extends Service implements UiWorkspace {
         const branded = SessionId(id)
         return sessions.byId[branded] !== undefined && !archived.has(branded)
       })
-      if (first !== undefined) this.openSession(SessionId(first))
+      // Stop the subscriptions before navigating: the open publishes Session
+      // state, and a listener re-entering this attempt would open again.
       finish()
+      if (first !== undefined) this.openSession(SessionId(first))
     }
     attempt()
     if (done) return () => {}
