@@ -95,6 +95,11 @@ type WorkspaceViewActions = {
   ) => void
   setArchivedFilter: (draft: WorkspaceViewState, filter: ArchivedFilter) => void
   createCustomGroup: (draft: WorkspaceViewState, name: string) => void
+  /**
+   * Add hand-made groups the Host document names and this browser does not
+   * hold yet; local groups keep their names and member order.
+   */
+  adoptHostGroups: (draft: WorkspaceViewState, groups: readonly AdoptedGroup[]) => void
   renameCustomGroup: (draft: WorkspaceViewState, groupId: string, name: string) => void
   /** Drop one group and return its members to the custom mode's ungrouped bucket. */
   deleteCustomGroup: (draft: WorkspaceViewState, groupId: string) => void
@@ -110,6 +115,13 @@ type WorkspaceViewActions = {
     groupId: string | undefined,
     beforeId?: string,
   ) => void
+}
+
+/** One Host-stored group a fresh browser adopts into its local view. */
+export interface AdoptedGroup {
+  readonly id: string
+  readonly name: string
+  readonly sessionIds: readonly string[]
 }
 
 /** Every hand-made group id a state currently holds members for. */
@@ -198,6 +210,18 @@ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState
         // A fresh group opens: landing on a folded empty header would read as
         // a creation that did nothing.
         d.groupExpansion[id] = true
+      },
+      adoptHostGroups: (d, groups) => {
+        let seq = d.customGroupSeq
+        for (const group of groups) {
+          const match = /^custom:(\d+)$/u.exec(group.id)
+          if (match !== null) seq = Math.max(seq, Number(match[1]))
+          if (d.customGroups.some(existing => existing.id === group.id)) continue
+          d.customGroups.push({ id: group.id, name: group.name })
+          d.customMembers[group.id] = [...group.sessionIds]
+          d.groupExpansion[group.id] = true
+        }
+        d.customGroupSeq = seq
       },
       renameCustomGroup: (d, groupId, name) => {
         const group = d.customGroups.find(candidate => candidate.id === groupId)

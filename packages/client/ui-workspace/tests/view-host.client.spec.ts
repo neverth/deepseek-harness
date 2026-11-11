@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TestWorkspaces } from '@deepseek-ai/dsh-client-test-runtime'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
 import { mirrorViewSnapshots } from '../src/client/view-host.ts'
 
@@ -110,6 +111,34 @@ describe('mirrorViewSnapshots', () => {
       '[ui-workspace] reading the Host group document failed:',
       expect.objectContaining({ message: 'missing method' }),
     )
+    expect(pushedGroups(workspaces)).toEqual([])
+    dispose()
+  })
+
+  it('adopts Host groups for a group link opened in a browser that holds none', async () => {
+    vi.useFakeTimers()
+    const workspaces = new TestWorkspaces(stabilize)
+    workspaces.stub('listGroups', async () => [{ id: 'custom:9', name: 'Host', sessionIds: [SessionId('s9')] }])
+    const view = createWorkspaceViewStore().create()
+    const dispose = mirrorViewSnapshots(workspaces, view, true)
+    await flush()
+    expect(view.getSnapshot().customGroups).toEqual([{ id: 'custom:9', name: 'Host' }])
+    expect(view.getSnapshot().customMembers['custom:9']).toEqual(['s9'])
+    expect(view.getSnapshot().groupExpansion['custom:9']).toBe(true)
+    expect(pushedGroups(workspaces)).toEqual([])
+    dispose()
+  })
+
+  it('keeps a local group whose id the Host document also names', async () => {
+    vi.useFakeTimers()
+    const workspaces = new TestWorkspaces(stabilize)
+    workspaces.stub('listGroups', async () => [{ id: 'custom:1', name: 'Host', sessionIds: [SessionId('s9')] }])
+    const view = createWorkspaceViewStore().create()
+    view.actions.createCustomGroup('Local')
+    const dispose = mirrorViewSnapshots(workspaces, view, true)
+    await flush()
+    expect(view.getSnapshot().customGroups).toEqual([{ id: 'custom:1', name: 'Local' }])
+    expect(view.getSnapshot().customMembers['custom:1']).toEqual([])
     expect(pushedGroups(workspaces)).toEqual([])
     dispose()
   })

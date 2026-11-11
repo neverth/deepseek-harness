@@ -389,20 +389,32 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   /**
-   * Focus the group named by the page URL. The templated view owns its own
-   * sidebar filter, so only the plain `group=` form opens the group's first
-   * Session; an unknown group stays unresolved for the browser's empty state.
-   * @returns the subscription stopping a pending first-Session wait.
+   * Focus the group named by the page URL. The Host document arrives
+   * asynchronously and the Session list may still be loading, so the attempt
+   * repeats on either source until it can land. The templated view owns its
+   * own sidebar filter, so only the plain `group=` form opens the group's
+   * first Session; an unknown group stays unresolved for the empty state.
+   * @returns the subscription stopping a pending focus attempt.
    */
   private focusLaunchedGroup(): () => void {
     const groupId = this.launch.groupId
     if (groupId === undefined) return () => {}
-    if (!this.view.getSnapshot().customGroups.some(group => group.id === groupId)) return () => {}
-    this.view.actions.setGroupExpanded(groupId, true)
-    if (this.launch.template !== undefined) return () => {}
-    const openFirst = (): boolean => {
+    let done = false
+    let stopView = (): void => {}
+    let stopSessions = (): void => {}
+    const finish = (): void => {
+      if (done) return
+      done = true
+      stopView()
+      stopSessions()
+    }
+    const attempt = (): void => {
+      if (done) return
+      if (!this.view.getSnapshot().customGroups.some(group => group.id === groupId)) return
+      this.view.actions.setGroupExpanded(groupId, true)
+      if (this.launch.template !== undefined) { finish(); return }
       const sessions = this.sessions.list.getSnapshot()
-      if (sessions.phase !== 'ready') return false
+      if (sessions.phase !== 'ready') return
       const archived = new Set(this.workspaces.list.getSnapshot().archivedSessionIds)
       const members = this.view.getSnapshot().customMembers[groupId] ?? []
       const first = members.find((id) => {
@@ -410,14 +422,13 @@ class UiWorkspaceService extends Service implements UiWorkspace {
         return sessions.byId[branded] !== undefined && !archived.has(branded)
       })
       if (first !== undefined) this.openSession(SessionId(first))
-      return true
+      finish()
     }
-    if (openFirst()) return () => {}
-    let stop = (): void => {}
-    stop = this.sessions.list.subscribe(() => {
-      if (openFirst()) stop()
-    })
-    return () => { stop() }
+    attempt()
+    if (done) return () => {}
+    stopView = this.view.subscribe(attempt)
+    stopSessions = this.sessions.list.subscribe(attempt)
+    return finish
   }
 
   private prepareDraft(binding: SessionBinding, options: DraftInitializationOptions): void {

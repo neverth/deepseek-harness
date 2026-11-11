@@ -129,15 +129,19 @@ export function apply(ctx: Context): void {
   const viewHandle = createWorkspaceViewStore()
   const viewInstance = viewHandle.create()
   // Local storage stays this browser's source of truth; the Host keeps the
-  // newest snapshots so a lost browser copy stays recoverable.
-  ctx.effect(() => mirrorViewSnapshots(workspaces, viewInstance), 'ui-workspace: view snapshots')
+  // newest snapshots so a lost browser copy stays recoverable. A page whose URL
+  // names a group also adopts Host groups it does not hold yet.
+  const launch = readWorkspaceLaunch(window.location.search)
+  ctx.effect(
+    () => mirrorViewSnapshots(workspaces, viewInstance, launch.groupId !== undefined),
+    'ui-workspace: view snapshots',
+  )
   const viewStore: typeof viewHandle = { ...viewHandle, create: () => viewInstance }
   const rowToast = createSnapshotStore<RowToastState | null>(null)
   let toastSeq = 0
   const notify = (toast: RowToast): void => { rowToast.set({ ...toast, seq: ++toastSeq }) }
   const uiWorkspace = new UiWorkspaceService(
-    ctx, ctx.remote.directoryPicker, workspaces, sessions, viewInstance, notify,
-    readWorkspaceLaunch(window.location.search),
+    ctx, ctx.remote.directoryPicker, workspaces, sessions, viewInstance, notify, launch,
   )
   ctx.slots.provideRoot({
     hooks: { workspaces: workspaces.list },
