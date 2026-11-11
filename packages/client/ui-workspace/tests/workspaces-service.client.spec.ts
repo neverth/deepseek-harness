@@ -345,6 +345,25 @@ describe('UiWorkspaceService', () => {
     expect(b.view.getSnapshot().groupExpansion['custom:1']).toBe(true)
   })
 
+  it('waits for the Session list without re-expanding on every view change', () => {
+    const open = vi.spyOn(UiWorkspaceService.prototype, 'openSession')
+    const b = bench({
+      sessions: sessionState([summary('first')], 'pending'),
+      configureView: (view) => {
+        view.actions.createCustomGroup('Launch')
+        view.actions.moveCustomMember(sid('first'), 'custom:1')
+        view.actions.setGroupExpanded('custom:1', false)
+      },
+      launch: { groupId: 'custom:1', template: undefined },
+    })
+    // View churn while Sessions load must not recurse into another expansion.
+    b.view.actions.setGroupExpanded('custom:1', true)
+    b.view.actions.setGroupExpanded('custom:1', false)
+    expect(open).not.toHaveBeenCalled()
+    b.sessions.list.set(sessionState([summary('first')], 'ready'))
+    expect(open).toHaveBeenCalledExactlyOnceWith(sid('first'))
+  })
+
   it('adds a Session started from a templated launch to the launched group', async () => {
     const b = bench({
       workspaces: workspaceState([workspace('w1')]),

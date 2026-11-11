@@ -410,8 +410,11 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     }
     const attempt = (): void => {
       if (done) return
-      if (!this.view.getSnapshot().customGroups.some(group => group.id === groupId)) return
-      this.view.actions.setGroupExpanded(groupId, true)
+      const state = this.view.getSnapshot()
+      if (!state.customGroups.some(group => group.id === groupId)) return
+      // One write only: expanding inside every notification would feed the
+      // view subscription that calls this attempt.
+      if (state.groupExpansion[groupId] !== true) this.view.actions.setGroupExpanded(groupId, true)
       const sessions = this.sessions.list.getSnapshot()
       if (sessions.phase !== 'ready') return
       const archived = new Set(this.workspaces.list.getSnapshot().archivedSessionIds)
