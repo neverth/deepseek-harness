@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import type { TurnRailItem } from './turn-rail-items.ts'
@@ -27,6 +27,12 @@ const DEFAULT_WIDTH = 160
 const MIN_WIDTH = 120
 /** Widest the outline may grow, whatever the margin allows. */
 const MAX_WIDTH = 420
+/**
+ * Space the outline needs beyond the transcript column: its 12px inset from
+ * the scrollport edge plus an 8px gap before the text. A narrower gutter would
+ * paint the rail over message text, so the rail hides instead.
+ */
+const RAIL_GUTTER = 20
 
 function clampWidth(width: number): number {
   return Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, Math.round(width)))
@@ -55,6 +61,28 @@ function TurnNavigatorRail({ items, activeTurn, busyTurn, onNavigate, t }: TurnN
   const pointerInsideRef = useRef(false)
   const dragBase = useRef({ origin: 0, width: 0 })
   const previewId = useId()
+  // The outline is a margin note, never an overlay: it hides as soon as the
+  // gutter beside the transcript cannot hold its current width. Measuring the
+  // scrollport against the first flow row keeps the decision tied to the
+  // rendered layout, so a resized window, board rail, dragged column, or
+  // wider outline all re-evaluate without a width threshold to keep in sync.
+  const [obstructed, setObstructed] = useState(false)
+  useLayoutEffect(() => {
+    const nav = frameRef.current
+    const scroller = nav?.closest('[data-conversation-scroll]')
+    if (scroller === null || scroller === undefined || typeof ResizeObserver === 'undefined') return
+    const flow = scroller.querySelector('[data-chat-flow-kind]')
+    if (flow === null) return
+    const measure = (): void => {
+      const gutter = scroller.getBoundingClientRect().right - flow.getBoundingClientRect().right
+      setObstructed(gutter < width + RAIL_GUTTER)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(scroller)
+    observer.observe(flow)
+    measure()
+    return () => { observer.disconnect() }
+  }, [width, items.length])
 
   // Keep the active row visible: centre it whenever it leaves the scrollport,
   // unless the reader's pointer is working the rail.
@@ -110,7 +138,7 @@ function TurnNavigatorRail({ items, activeTurn, busyTurn, onNavigate, t }: TurnN
   const preview = items.find(item => item.turn === previewTurn)
   const frameStyle: OutlineFrameStyle = { '--turn-outline-width': `${String(width)}px` }
   return (
-    <div className={css.slot}>
+    <div className={css.slot} style={obstructed ? { display: 'none' } : undefined}>
       <nav
         ref={frameRef}
         className={dragging ? `${css.frame} ${css.frameDragging}` : css.frame}
