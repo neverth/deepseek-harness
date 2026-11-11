@@ -612,6 +612,26 @@ describe('workspace browser rows', () => {
     expect(screen.getByRole('treeitem').className).toContain(rowCss.menuOpen)
   })
 
+  it('keeps a custom group menu open and its action strip visible while the menu is used', () => {
+    const onToggle = vi.fn()
+    const onRename = vi.fn()
+    const group: GroupNode = {
+      key: 'custom:1', workspaceId: undefined, customGroupId: 'custom:1', cwd: undefined,
+      createdAt: undefined, label: 'Group', sessionCount: 0, expanded: true,
+      containsCurrent: false, sessions: [],
+    }
+    render(<ProjectRowItem group={group} onToggle={onToggle} onCreate={vi.fn()}
+      actions={{ rename: onRename, delete: vi.fn() }} t={t} />)
+    const row = screen.getByRole('treeitem')
+    fireEvent.click(screen.getByRole('button', { name: '分组“Group”的操作' }))
+    // The menu lives in a portal outside the row: the row must keep its action
+    // strip visible, and opening the menu must not toggle the group.
+    expect(row.className).toContain(rowCss.menuOpen)
+    expect(onToggle).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }))
+    expect(onRename).toHaveBeenCalledOnce()
+  })
+
   it('workspace row offers only the actions its Workspace access snapshot allows', () => {
     const group: GroupNode = {
       key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',

@@ -222,7 +222,7 @@ function ProjectRow({
   ]
   const ownRow = (
     <div
-      className={clsx(css.projectRow, menuOpen && css.menuOpen)}
+      className={clsx(css.projectRow, (menuOpen || customMenuOpen) && css.menuOpen)}
       data-row-key={`workspace:${group.key}`}
       role="treeitem"
       aria-expanded={row.expanded}
@@ -248,7 +248,7 @@ function ProjectRow({
       <span className={css.projectText}>
         <span className={css.title}>{label}</span>
       </span>
-      <span className={css.rowActions}>
+      <span className={css.rowActions} onClick={(e) => { e.stopPropagation() }}>
         {workspaceMenuTarget !== undefined && (
           renderFactorySlot('contextMenu.button', {
             target: { kind: 'workspace', value: { ...workspaceMenuTarget, displayTitle: label } },
@@ -271,7 +271,6 @@ function ProjectRow({
               else actions.delete?.()
             }}
             portal
-            closeOnPointerLeave
             anchor={(
               <button
                 type="button"
