@@ -19,7 +19,9 @@ const SESSION_ID = 'agent-group-board-bridge-e2e'
 const SESSION_TITLE = 'Board file preview'
 const GROUP_ID = 'custom:e2e-board'
 const GROUP_NAME = 'E2E board'
-const REPORT = 'board-report.md'
+// A source preview carries line anchors; the Markdown renderer has no source-line
+// model, so a `.md` file opens rendered but does not mark a line.
+const REPORT = 'board-report.txt'
 
 it('opens a file posted by the sandboxed board iframe in the native preview', async () => {
   const scaffold = await launchWebScaffold()
@@ -30,7 +32,7 @@ it('opens a file posted by the sandboxed board iframe in the native preview', as
   await scaffold.ctx.sessionController.rename({ sessionId, title: SESSION_TITLE })
   await scaffold.ctx.agentGroups.replace([{ id: GROUP_ID, name: GROUP_NAME, sessionIds: [sessionId] }])
   await scaffold.ctx.agentGroups.setBoardUrl(GROUP_ID, 'http://127.0.0.1:9/board.html')
-  await writeFile(join(scaffold.workspaceCwd, REPORT), '# Board report\n\nline one\nline two\n', 'utf8')
+  await writeFile(join(scaffold.workspaceCwd, REPORT), 'line one\nline two\nline three\n', 'utf8')
 
   const browser = await chromium.launch()
   onTestFinished(() => browser.close())
@@ -55,7 +57,7 @@ it('opens a file posted by the sandboxed board iframe in the native preview', as
   const previewUrl = page.locator('[data-textpreview-url]')
   await expect.poll(async () => (await previewUrl.last().getAttribute('data-textpreview-url'))?.endsWith(`/${REPORT}`))
     .toBe(true)
-  expect(await page.locator('[data-textpreview-mark="2"]').count()).toBeGreaterThan(0)
+  await expect.poll(() => page.locator('[data-textpreview-mark="2"]').count()).toBeGreaterThan(0)
   await page.getByText('line two', { exact: true }).waitFor()
   expect(tripwire.pageErrors).toEqual([])
   expect(tripwire.warnings).toEqual([])
