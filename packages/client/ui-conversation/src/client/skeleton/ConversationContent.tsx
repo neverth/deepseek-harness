@@ -85,15 +85,17 @@ export function ConversationContent(props: ConversationContentProps) {
   // outlet.
   // The two land at different levels: viewport height is the scrollport's own
   // fact, while composer height goes on the band that holds BOTH the
-  // scrollport and the mobile composer toggle — a sibling of the scroller
-  // cannot inherit a variable set on it.
+  // scrollport and the mobile composer toggle. A slot occupant may wrap the
+  // scrollport in its own layers, so the band is the nearest
+  // [data-conversation-content] ancestor rather than the scrollport's parent.
   const seatObserver = useRef<ResizeObserver | null>(null)
   const seatResizeRef = useCallback((seat: HTMLDivElement | null): void => {
     seatObserver.current?.disconnect()
     seatObserver.current = null
-    const scroller = seat?.parentElement ?? null
-    const band = scroller?.parentElement ?? null
-    if (seat === null || scroller === null || band === null) return
+    if (seat === null) return
+    const scroller = seat.parentElement
+    const band = seat.closest('[data-conversation-content]')
+    if (scroller === null || !(band instanceof HTMLElement)) return
     seatObserver.current = new ResizeObserver(() => {
       band.style.setProperty('--dsh-composer-height', `${seat.offsetHeight}px`)
       scroller.style.setProperty(
