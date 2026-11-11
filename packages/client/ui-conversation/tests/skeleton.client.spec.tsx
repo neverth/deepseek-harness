@@ -566,6 +566,21 @@ describe('ConversationRoot resident composer', () => {
     }))
   })
 
+  it('publishes the composer height on the conversation band, not an intermediate frame layer', () => {
+    const b = mount(sessionSnapshotOf())
+    const content = b.view.container.querySelector('[data-conversation-content]') as HTMLElement
+    const seat = b.view.container.querySelector('[data-composer-seat]') as HTMLElement
+    const frame = b.view.getByTestId('hero-frame')
+    // The frame slots a layer between the band and the scrollport; the mobile
+    // composer trigger is a direct child of the band, so only the band carries
+    // the height it reads.
+    expect(frame.parentElement).toBe(content)
+    Object.defineProperty(seat, 'offsetHeight', { value: 137, configurable: true })
+    act(() => { fireResize(seat) })
+    expect(content.style.getPropertyValue('--dsh-composer-height')).toBe('137px')
+    expect(frame.style.getPropertyValue('--dsh-composer-height')).toBe('')
+  })
+
   it('sticky composer seat wraps the whole overlay chain, not only the fallback stack', () => {
     const b = mount(sessionSnapshotOf(), undefined, undefined, { overlayTakeover: true })
     const seat = b.view.container.querySelector('[data-composer-seat]')
