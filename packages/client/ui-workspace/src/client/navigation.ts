@@ -412,7 +412,6 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       if (done) return
       if (!this.view.getSnapshot().customGroups.some(group => group.id === groupId)) return
       this.view.actions.setGroupExpanded(groupId, true)
-      if (this.launch.template !== undefined) { finish(); return }
       const sessions = this.sessions.list.getSnapshot()
       if (sessions.phase !== 'ready') return
       const archived = new Set(this.workspaces.list.getSnapshot().archivedSessionIds)
