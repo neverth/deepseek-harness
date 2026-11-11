@@ -256,6 +256,7 @@ function BoardPanel({ group, t }: BoardPanelProps) {
       </div>
       <div className={css.scale} ref={viewport} data-scroll={fit ? undefined : ''}>
         <iframe
+          key={`${group.id}:${group.boardUrl}`}
           className={css.frame}
           title={group.name}
           src={`${boardSrc}&_=${String(nonce)}`}

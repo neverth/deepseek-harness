@@ -153,6 +153,23 @@ describe('BoardRail', () => {
       await Promise.resolve()
     })
 
-    await waitFor(() => { expect(view.container.querySelector('iframe')).not.toBeNull() })
+    const firstFrame = await waitFor(() => {
+      const element = view.container.querySelector('iframe')
+      if (element === null) throw new Error('board iframe not rendered')
+      return element
+    })
+
+    groups = [group(['session-root'], 'http://127.0.0.1:8765/t/qa-2')]
+    await act(async () => {
+      tick()
+      await Promise.resolve()
+    })
+
+    // The route source changes with the URL, so the iframe remounts to show it.
+    await waitFor(() => {
+      const next = view.container.querySelector('iframe')
+      expect(next).not.toBeNull()
+      expect(next).not.toBe(firstFrame)
+    })
   })
 })
