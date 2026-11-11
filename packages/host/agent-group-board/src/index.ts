@@ -7,10 +7,8 @@
  *
  * The answer is sandboxed to an opaque origin: the proxied page keeps its
  * scripts and links but cannot read DSH cookies, storage, or Remote endpoints.
- * The page's own `<meta http-equiv="refresh">` is removed because the board
- * column owns refresh (a reload would discard pointer interaction), and a
- * `<base>` naming the upstream directory keeps the page's relative and
- * root-relative links pointing at its own server.
+ * The upstream document is served unchanged, so the board page owns its own
+ * refresh and link resolution.
  *
  * @module @deepseek-ai/dsh-host-agent-group-board
  */
@@ -104,22 +102,6 @@ function sendHtml(res: ServerResponse, status: number, html: string): void {
 }
 
 /**
- * Prepare upstream HTML for the board column: drop its own refresh and point
- * relative links at its server.
- * @param html - upstream document text.
- * @param upstreamUrl - final upstream URL after redirects.
- * @returns the document the board column receives.
- */
-function rewriteBoardHtml(html: string, upstreamUrl: string): string {
-  const withoutRefresh = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, '')
-  const base = `<base href="${escapeHtml(new URL('.', upstreamUrl).href)}">`
-  const head = /<head(?:\s[^>]*)?>/i.exec(withoutRefresh)
-  if (head === null) return base + withoutRefresh
-  const at = head.index + head[0].length
-  return withoutRefresh.slice(0, at) + base + withoutRefresh.slice(at)
-}
-
-/**
  * Serve the board of one group by proxying its stored URL.
  * @param ctx - host context with the registry and the trust fence.
  * @param req - incoming request.
@@ -176,8 +158,7 @@ async function serve(ctx: Context, req: IncomingMessage, res: ServerResponse): P
     ))
     return
   }
-  const html = await upstream.text()
-  sendHtml(res, 200, rewriteBoardHtml(html, upstream.url === '' ? group.boardUrl : upstream.url))
+  sendHtml(res, 200, await upstream.text())
 }
 
 /**

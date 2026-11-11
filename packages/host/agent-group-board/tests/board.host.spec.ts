@@ -46,7 +46,7 @@ function stubUpstream(handler: () => Promise<Response>): { calls: string[]; requ
   return { calls, request }
 }
 
-/** One upstream HTML page carrying its own refresh and a root-relative link. */
+/** One upstream HTML page; its own refresh and root-relative link make passthrough observable. */
 function upstreamHtml(): string {
   return [
     '<!doctype html><html><head>',
@@ -57,7 +57,7 @@ function upstreamHtml(): string {
 }
 
 describe(`GET ${AgentGroupBoard.AGENT_GROUP_BOARD_PATH}`, () => {
-  it('proxies the stored board URL with refresh stripped and a base for its links', async () => {
+  it('proxies the stored board URL without rewriting the document', async () => {
     groups.push({
       id: 'custom:2',
       name: '模型上线测试-1111',
@@ -76,10 +76,7 @@ describe(`GET ${AgentGroupBoard.AGENT_GROUP_BOARD_PATH}`, () => {
     expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8')
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(response.headers.get('content-security-policy')).toContain('sandbox')
-    const body = await response.text()
-    expect(body).not.toContain('http-equiv')
-    expect(body).toContain('<base href="http://127.0.0.1:8765/t/">')
-    expect(body).toContain('<a href="/t/qa-2">next</a>')
+    expect(await response.text()).toBe(upstreamHtml())
     expect(upstream.calls).toEqual(['http://127.0.0.1:8765/t/qa-20261111105329-8b272f20'])
   })
 
