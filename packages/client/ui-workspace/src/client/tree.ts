@@ -580,7 +580,10 @@ function subagentNode(
   const preview = latestPrompt(list, row.summary.id)
   return {
     id: row.summary.id,
-    title: row.name ?? (sessionTitle(row.summary) || row.label || ''),
+    // The catalog label is the semantic description the parent recorded
+    // (for example "基础链路冒烟与路由取证"); the short agent name is only a
+    // fallback for older descriptors without one.
+    title: row.label || row.name || sessionTitle(row.summary),
     blank: false,
     running: status?.running ?? row.summary.running,
     runningSubagentCount: runningChildCount(list, row.summary.id, statuses),

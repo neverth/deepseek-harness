@@ -865,13 +865,13 @@ describe('WorkspaceBrowser', () => {
       open,
     })
     fireEvent.click(screen.getByText('alpha'))
-    const row = screen.getByText('child').closest('[data-row-key]') as HTMLElement
+    const row = screen.getByText('Child').closest('[data-row-key]') as HTMLElement
     expect(row.getAttribute('data-row-key')).toBe('session:child')
     // View-only: no row menu, pin, archive, or other management control.
     expect(within(row).queryByRole('button')).toBeNull()
-    fireEvent.mouseDown(screen.getByText('child'), { detail: 1 })
-    fireEvent.mouseDown(screen.getByText('child'), { detail: 2 })
-    fireEvent.doubleClick(screen.getByText('child'))
+    fireEvent.mouseDown(screen.getByText('Child'), { detail: 1 })
+    fireEvent.mouseDown(screen.getByText('Child'), { detail: 2 })
+    fireEvent.doubleClick(screen.getByText('Child'))
     expect(requestSessionRename).not.toHaveBeenCalled()
     fireEvent.click(row)
     expect(open).toHaveBeenCalledWith(sid('child'))

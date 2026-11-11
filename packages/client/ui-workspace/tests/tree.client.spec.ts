@@ -443,7 +443,7 @@ describe('deriveGroups', () => {
     const children = groups[0]!.sessions.filter(node => node.subagent === true)
     expect(children.map(node => [node.id, node.title])).toEqual([
       [unnamed.id, 'unnamed'],
-      [named.id, 'perf'],
+      [named.id, 'Named'],
     ])
     // An available catalog owns membership even when summary lineage names another child.
     expect(children.some(node => node.id === fallbackOnly.id)).toBe(false)
@@ -517,7 +517,7 @@ describe('deriveGroups', () => {
     const child = (id: SessionId) => rows.find(row => row.id === id)!
     expect(rows.map(row => row.id)).toEqual([parent.id, named.id, labelled.id, bare.id, archivedChild.id])
     expect(child(named.id)).toMatchObject({
-      title: 'perf',
+      title: 'Named label',
       running: true,
       completed: true,
       awaitingAck: true,
