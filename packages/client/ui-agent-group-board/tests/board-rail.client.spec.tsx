@@ -67,6 +67,7 @@ function rail(
   summaries: SessionSummary[],
   sessionId: string,
   groups: () => Promise<readonly AgentGroupView[]>,
+  openFile: BoardRailProps['openFile'] = vi.fn(),
 ) {
   const state = listState(...summaries)
   const useSessions: BoardRailProps['useSessions'] = selector => selector(state)
@@ -75,6 +76,7 @@ function rail(
       sessionId={sid(sessionId)}
       useSessions={useSessions}
       loadGroups={groups}
+      openFile={openFile}
       t={t}
     />,
   )
@@ -132,6 +134,63 @@ describe('BoardRail', () => {
     fireEvent.click(view.getByRole('button', { name: '展开看板' }))
     expect(view.container.querySelector('iframe')?.getAttribute('src'))
       .toBe('/agent-group-board?group=custom%3A2&_=1')
+  })
+
+  it('opens a board file only for the sandboxed board iframe', async () => {
+    const openFile = vi.fn()
+    const view = rail(
+      [summary('session-root')],
+      'session-root',
+      () => Promise.resolve([group(['session-root'], 'http://127.0.0.1:8765/t/qa-1')]),
+      openFile,
+    )
+    const frame = await waitFor(() => {
+      const element = view.container.querySelector('iframe')
+      if (element === null) throw new Error('board iframe not rendered')
+      return element
+    })
+    Object.defineProperty(frame, 'contentWindow', { configurable: true, value: window })
+
+    fireEvent(window, new MessageEvent('message', {
+      data: { type: 'dsh:open-file', path: '.tmp/qa-run/report/qa-report.md', line: 24 },
+      origin: 'null',
+      source: window,
+    }))
+    expect(openFile).toHaveBeenCalledWith(sid('session-root'), {
+      path: '.tmp/qa-run/report/qa-report.md',
+      line: 24,
+    })
+
+    openFile.mockClear()
+    fireEvent(window, new MessageEvent('message', {
+      data: { type: 'dsh:open-file', path: '.tmp/qa-run/report/qa-report.md' },
+      origin: 'http://10.37.242.122:3080',
+      source: window,
+    }))
+    expect(openFile).not.toHaveBeenCalled()
+  })
+
+  it('ignores a message from any window other than the board iframe', async () => {
+    const openFile = vi.fn()
+    const view = rail(
+      [summary('session-root')],
+      'session-root',
+      () => Promise.resolve([group(['session-root'], 'http://127.0.0.1:8765/t/qa-1')]),
+      openFile,
+    )
+    const frame = await waitFor(() => {
+      const element = view.container.querySelector('iframe')
+      if (element === null) throw new Error('board iframe not rendered')
+      return element
+    })
+    Object.defineProperty(frame, 'contentWindow', { configurable: true, value: {} })
+
+    fireEvent(window, new MessageEvent('message', {
+      data: { type: 'dsh:open-file', path: '.tmp/qa-run/report/qa-report.md' },
+      origin: 'null',
+      source: window,
+    }))
+    expect(openFile).not.toHaveBeenCalled()
   })
 
   it('picks up a board URL written after the rail first loaded', async () => {

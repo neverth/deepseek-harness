@@ -14,7 +14,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the renderer-owned slots service.
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: pulls the ctx.sidebarRight service declaration.
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+// Type-only: pulls the file resource navigation params (`line`).
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import { AGENT_GROUP_BOARD_NS, BoardRail } from './AgentGroupBoard.tsx'
+import { boardFileAddress } from './open-file.ts'
 import { de, en, es, fr, ja, pt, ru, zh } from './locales.ts'
 
 export { BoardRail, AGENT_GROUP_BOARD_NS } from './AgentGroupBoard.tsx'
@@ -22,8 +27,8 @@ export type { AgentGroupBoardProps, BoardRailProps } from './AgentGroupBoard.tsx
 export type { AgentGroupBoardInjected } from './slots.ts'
 export type { AgentGroupBoardKey } from './locales.ts'
 
-/** Services required by the board entry, its Host group reads, and its copy. */
-export const inject = ['slots', 'workspaces', 'locale']
+/** Services required by the board entry, its Host reads, its files, and its copy. */
+export const inject = ['slots', 'workspaces', 'locale', 'sessions', 'sidebarRight']
 
 /**
  * Register the board column and its dictionaries.
@@ -37,6 +42,19 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('conversation.left-rail', () => ctx.slots.register({
     name: 'conversation.left-rail',
     locale: AGENT_GROUP_BOARD_NS,
-    inject: () => ({ loadGroups: () => ctx.workspaces.listGroups() }),
+    inject: () => ({
+      loadGroups: () => ctx.workspaces.listGroups(),
+      openFile: (root, request) => {
+        const cwd = ctx.sessions.list.getSnapshot().byId[root]?.cwd
+        // The live working directory may have moved away from the Session's
+        // initial cwd; an unretained root Session keeps the summary cwd.
+        const binding = ctx.sessions.binding(root)
+        const current = binding?.session.projections.faceOf('workingDirectory')
+          .getSnapshot() as string | null | undefined
+        const address = boardFileAddress(root, cwd, current ?? undefined, request.path)
+        if (request.line === undefined) ctx.sidebarRight.openResource(address)
+        else ctx.sidebarRight.openResource(address, { params: { line: request.line } })
+      },
+    }),
   }, BoardRail))
 }

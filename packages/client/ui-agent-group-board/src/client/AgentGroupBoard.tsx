@@ -16,6 +16,7 @@ import type { AgentGroupView } from '@deepseek-ai/dsh-api-workspace-controller/c
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { boardGroupFor, rootSessionId, sameGroupDocument, type BoardGroup } from './board.ts'
+import { readBoardOpenFile } from './open-file.ts'
 import type { AgentGroupBoardInjected } from './slots.ts'
 import type { AgentGroupBoardKey } from './locales.ts'
 import css from './AgentGroupBoard.module.css'
@@ -56,6 +57,8 @@ export interface BoardRailProps {
   useSessions: AgentGroupBoardProps['useSessions']
   /** Read the Host group document. */
   loadGroups: AgentGroupBoardInjected['loadGroups']
+  /** Open a board file in the native preview of the root Session's sidebar. */
+  openFile: AgentGroupBoardInjected['openFile']
   /** Board-column copy. */
   t: AgentGroupBoardProps['t']
 }
@@ -69,6 +72,8 @@ interface DragState {
 /** Props of one resolved group's column. */
 interface BoardPanelProps {
   readonly group: BoardGroup
+  readonly root: SessionId
+  readonly openFile: AgentGroupBoardInjected['openFile']
   readonly t: AgentGroupBoardProps['t']
 }
 
@@ -98,7 +103,7 @@ function storeWidth(width: number): void {
  * @param props - the `conversation.left-rail` entry props.
  * @returns the board column, or null when no group board applies.
  */
-export function BoardRail({ sessionId, useSessions, loadGroups, t }: BoardRailProps) {
+export function BoardRail({ sessionId, useSessions, loadGroups, openFile, t }: BoardRailProps) {
   const root = useSessions(state => sessionId === undefined ? undefined : rootSessionId(state.byId, sessionId))
   const [groups, setGroups] = useState<readonly AgentGroupView[] | null>(null)
   const loadGroupsRef = useRef(loadGroups)
@@ -129,8 +134,8 @@ export function BoardRail({ sessionId, useSessions, loadGroups, t }: BoardRailPr
   }, [active])
 
   const group = boardGroupFor(groups ?? [], sessionId, root)
-  if (group === undefined) return null
-  return <BoardPanel group={group} t={t} />
+  if (group === undefined || sessionId === undefined || root === undefined) return null
+  return <BoardPanel group={group} root={root} openFile={openFile} t={t} />
 }
 
 /**
@@ -138,7 +143,7 @@ export function BoardRail({ sessionId, useSessions, loadGroups, t }: BoardRailPr
  * @param props - resolved group and copy.
  * @returns the complete rail.
  */
-function BoardPanel({ group, t }: BoardPanelProps) {
+function BoardPanel({ group, root, openFile, t }: BoardPanelProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [nonce, setNonce] = useState(0)
   const [fit, setFit] = useState(true)
@@ -146,6 +151,9 @@ function BoardPanel({ group, t }: BoardPanelProps) {
   const [view, setView] = useState({ scale: 0.3, offset: 0, height: 2400 })
   const drag = useRef<DragState | null>(null)
   const viewport = useRef<HTMLDivElement | null>(null)
+  const frame = useRef<HTMLIFrameElement | null>(null)
+  const openFileRef = useRef(openFile)
+  openFileRef.current = openFile
   const boardSrc = `${BOARD_PATH}?group=${encodeURIComponent(group.id)}`
 
   useEffect(() => {
@@ -167,6 +175,16 @@ function BoardPanel({ group, t }: BoardPanelProps) {
     measure()
     return () => { observer.disconnect() }
   }, [collapsed, fit, group.id])
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent): void => {
+      const request = readBoardOpenFile(event, frame.current?.contentWindow ?? null)
+      if (request === undefined) return
+      openFileRef.current(root, request)
+    }
+    window.addEventListener('message', onMessage)
+    return () => { window.removeEventListener('message', onMessage) }
+  }, [root])
 
   if (collapsed) {
     return (
@@ -257,6 +275,7 @@ function BoardPanel({ group, t }: BoardPanelProps) {
       <div className={css.scale} ref={viewport} data-scroll={fit ? undefined : ''}>
         <iframe
           key={`${group.id}:${group.boardUrl}`}
+          ref={frame}
           className={css.frame}
           title={group.name}
           src={`${boardSrc}&_=${String(nonce)}`}
