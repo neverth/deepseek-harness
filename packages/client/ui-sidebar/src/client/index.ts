@@ -42,6 +42,11 @@ const NS = 'sidebar'
 
 interface WorkspaceNavigation {
   startSession(workspaceId?: Parameters<SidebarRootInjected['startSession']>[0]): void
+  /** Group and template named by the page URL; see `WorkspaceLaunch`. */
+  readonly launch: {
+    readonly groupId: string | undefined
+    readonly template: string | undefined
+  }
 }
 
 /** Services required by the sidebar plugin. */
@@ -76,6 +81,7 @@ export function apply(ctx: ClientContext): void {
   }
 
   const injectProps = (): SidebarRootInjected => ({
+    launch: workspaceNavigation.launch,
     // The shell's New Session button rides the Workspace UI's shared action
     // (current Session Workspace, then recent Workspace).
     startSession: (workspaceId) => { workspaceNavigation.startSession(workspaceId) },

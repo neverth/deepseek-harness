@@ -195,6 +195,15 @@ export interface SidebarFooterActionOwnerProps {
  */
 export type SidebarRootInjected = {
   /**
+   * Group and template named by the page URL. A templated launch hides the
+   * panel launchers, deployment switch, and settings entry so the sidebar
+   * shows only the group it names.
+   */
+  launch?: {
+    readonly groupId: string | undefined
+    readonly template: string | undefined
+  }
+  /**
    * Start a New Session: with a workspace, reuse-or-create its blank session
    * and open it; without one, inherit the current Session Workspace, then the
    * recent Workspace, or clear into the New Session pure view when none exist.

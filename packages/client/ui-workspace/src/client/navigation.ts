@@ -19,12 +19,13 @@ import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type {
   IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { DraftInitializationOptions } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { RowToast } from './contract/slots.ts'
+import type { WorkspaceLaunch } from './launch.ts'
 import { pinOrderAccounts, pinOrderSource } from './pin-order.ts'
-import type { WorkspaceViewStoreActions } from './stores.ts'
+import type { WorkspaceViewInstance } from './stores.ts'
 
 interface MainSelection {
   readonly sessionId?: SessionId
@@ -39,6 +40,8 @@ export interface StartSessionOptions extends DraftInitializationOptions {
 
 /** Workspace archive and directory operations consumed by Client UI domains. */
 export interface UiWorkspace {
+  /** Launch options read from the page URL; fixed for this page's lifetime. */
+  readonly launch: WorkspaceLaunch
   /**
    * Select a Session and show its Conversation as one UI navigation action.
    * @param target - known Session identity or durable direct-parent subagent address to display.
@@ -182,21 +185,26 @@ class UiWorkspaceService extends Service implements UiWorkspace {
    * @param directoryPicker - the directory-picking Remote namespace.
    * @param workspaces - pure Workspace Controller.
    * @param sessions - pure Session Controller.
-   * @param view - the browser's viewing-store write set (one instance shared with its registration).
+   * @param view - the browser's viewing-store instance: its actions write view state and its snapshot
+   * names the launched group's members.
    * @param notify - show one notice through the Workspace notice channel.
+   * @param launch - group and template named by the page URL.
    */
   constructor(
     ctx: Context,
     private readonly directoryPicker: ClientRemote['directoryPicker'],
     private readonly workspaces: IWorkspaces,
     private readonly sessions: ISessions,
-    private readonly view: Pick<WorkspaceViewStoreActions, 'pinSessionOrder'>,
+    private readonly view: WorkspaceViewInstance,
     private readonly notify: (toast: RowToast) => void,
+    readonly launch: WorkspaceLaunch,
   ) {
     super(ctx, 'uiWorkspace')
     ctx.effect(() => {
       const stop = this.watchNavigation()
+      const stopLaunch = this.focusLaunchedGroup()
       return () => {
+        stopLaunch()
         stop()
         this.lifetime.abort()
         const reference = this.mainReference
@@ -360,14 +368,56 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       this.clearMain()
       return
     }
-    const opening = this.openWorkspace(target, initializeDraft ? (id) => {
+    const opening = this.openWorkspace(target, (id) => {
+      this.assignLaunchGroup(id)
+      if (!initializeDraft) return
       const binding = this.sessions.binding(id)
       if (binding === undefined) this.draftPreparationFailed()
       this.prepareDraft(binding, draftOptions)
-    } : undefined, agentPreset === undefined ? {} : { agentPreset })
+    }, agentPreset === undefined ? {} : { agentPreset })
     void opening.catch(
       (reason: unknown) => { console.warn('new session failed:', reason) },
     )
+  }
+
+  /** Add a Session created from a templated launch to the group the URL names. */
+  private assignLaunchGroup(sessionId: SessionId): void {
+    const groupId = this.launch.groupId
+    if (groupId === undefined || this.launch.template === undefined) return
+    if (!this.view.getSnapshot().customGroups.some(group => group.id === groupId)) return
+    this.view.actions.moveCustomMember(sessionId, groupId)
+  }
+
+  /**
+   * Focus the group named by the page URL. The templated view owns its own
+   * sidebar filter, so only the plain `group=` form opens the group's first
+   * Session; an unknown group stays unresolved for the browser's empty state.
+   * @returns the subscription stopping a pending first-Session wait.
+   */
+  private focusLaunchedGroup(): () => void {
+    const groupId = this.launch.groupId
+    if (groupId === undefined) return () => {}
+    if (!this.view.getSnapshot().customGroups.some(group => group.id === groupId)) return () => {}
+    this.view.actions.setGroupExpanded(groupId, true)
+    if (this.launch.template !== undefined) return () => {}
+    const openFirst = (): boolean => {
+      const sessions = this.sessions.list.getSnapshot()
+      if (sessions.phase !== 'ready') return false
+      const archived = new Set(this.workspaces.list.getSnapshot().archivedSessionIds)
+      const members = this.view.getSnapshot().customMembers[groupId] ?? []
+      const first = members.find((id) => {
+        const branded = SessionId(id)
+        return sessions.byId[branded] !== undefined && !archived.has(branded)
+      })
+      if (first !== undefined) this.openSession(SessionId(first))
+      return true
+    }
+    if (openFirst()) return () => {}
+    let stop = (): void => {}
+    stop = this.sessions.list.subscribe(() => {
+      if (openFirst()) stop()
+    })
+    return () => { stop() }
   }
 
   private prepareDraft(binding: SessionBinding, options: DraftInitializationOptions): void {
@@ -375,7 +425,6 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     if (conversation === undefined) this.draftPreparationFailed()
     if (conversation.input.requestDraftInitialization(binding, options) === 'blocked') this.draftPreparationFailed()
   }
-
   private draftPreparationFailed(): never {
     const message = this.ctx.locale.bind('workspace')('draft.initializationFailed')
     this.notify({ kind: 'createFailed', message })
@@ -394,7 +443,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   async pinSession(sessionId: SessionId): Promise<void> {
     await this.workspaces.pinSession(sessionId)
     const { items, pinnedSessionIds, archivedSessionIds } = this.workspaces.list.getSnapshot()
-    this.view.pinSessionOrder(
+    this.view.actions.pinSessionOrder(
       sessionId,
       pinOrderAccounts(items, sessionId),
       pinOrderSource(items, this.sessions.list.getSnapshot(), { pinnedSessionIds, archivedSessionIds }),

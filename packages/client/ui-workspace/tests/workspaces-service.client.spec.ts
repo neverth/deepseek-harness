@@ -20,8 +20,9 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { DraftInitializationOptions, SessionInputResolver } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { RowToast } from '../src/client/contract/slots.ts'
 import { DirectoryBrowseError, UiWorkspaceService } from '../src/client/navigation.ts'
+import { NO_WORKSPACE_LAUNCH, type WorkspaceLaunch } from '../src/client/launch.ts'
 import { en, zh } from '../src/client/locales.ts'
-import { createWorkspaceViewStore, FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
+import { createWorkspaceViewStore, FLAT_SESSION_ORDER_KEY, type WorkspaceViewInstance } from '../src/client/stores.ts'
 import { UNGROUPED_KEY } from '../src/client/tree.ts'
 
 const sid = (id: string): SessionId => SessionId(id)
@@ -279,6 +280,10 @@ interface BenchOptions {
   readonly workspaces?: WorkspaceSnapshot
   readonly sessions?: SessionListState
   readonly configureSessions?: (sessions: FakeSessions) => void
+  /** Seed the viewing store before the service reads its launch group. */
+  readonly configureView?: (view: WorkspaceViewInstance) => void
+  /** Page-URL launch options; ordinary pages leave them unset. */
+  readonly launch?: WorkspaceLaunch
 }
 
 function bench(options: BenchOptions = {}) {
@@ -304,14 +309,16 @@ function bench(options: BenchOptions = {}) {
   options.configureWorkspaces?.(workspaces)
   options.configureSessions?.(sessions)
   const view = createWorkspaceViewStore().create()
+  options.configureView?.(view)
   const notify = vi.fn<(toast: RowToast) => void>()
   const uiWorkspace = new UiWorkspaceService(
     ctx,
     directoryPicker.remote,
     workspaces,
     sessions,
-    view.actions,
+    view,
     notify,
+    options.launch ?? NO_WORKSPACE_LAUNCH,
   )
   return { ctx, directoryPicker, sessions, uiWorkspace, workspaces, layout, selectPanel, view, notify, requestDraftInitialization }
 }
@@ -323,6 +330,38 @@ function lastOpening(open: MockInstance<UiWorkspaceService['openWorkspace']>): P
 }
 
 describe('UiWorkspaceService', () => {
+  it('opens the first visible Session of the group named by the page URL', () => {
+    const open = vi.spyOn(UiWorkspaceService.prototype, 'openSession')
+    const b = bench({
+      sessions: sessionState([summary('first'), summary('second')]),
+      configureView: (view) => {
+        view.actions.createCustomGroup('Launch')
+        view.actions.moveCustomMember(sid('first'), 'custom:1')
+        view.actions.moveCustomMember(sid('second'), 'custom:1')
+      },
+      launch: { groupId: 'custom:1', template: undefined },
+    })
+    expect(open).toHaveBeenCalledExactlyOnceWith(sid('first'))
+    expect(b.view.getSnapshot().groupExpansion['custom:1']).toBe(true)
+  })
+
+  it('adds a Session started from a templated launch to the launched group', async () => {
+    const b = bench({
+      workspaces: workspaceState([workspace('w1')]),
+      sessions: sessionState([summary('member')]),
+      configureView: (view) => {
+        view.actions.createCustomGroup('Launch')
+        view.actions.moveCustomMember(sid('member'), 'custom:1')
+      },
+      launch: { groupId: 'custom:1', template: 'modellaunch' },
+    })
+    const open = vi.spyOn(b.uiWorkspace, 'openWorkspace')
+    b.uiWorkspace.startSession(wid('w1'))
+    await lastOpening(open)
+    expect(b.view.getSnapshot().customMembers['custom:1'])
+      .toEqual([sid('member'), sid('created-w1')])
+  })
+
   it('prepares and selects the default Workspace after both startup baselines', async () => {
     const b = bench({ configureWorkspaces: (workspaces) => {
       workspaces.initializeDefault.mockImplementation(async () => {

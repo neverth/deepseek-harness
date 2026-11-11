@@ -170,6 +170,7 @@ export function SidebarRoot({
   collapsed,
   width,
   drawer,
+  launch,
   startSession,
   toggleSidebar,
   selectPanel,
@@ -186,6 +187,10 @@ export function SidebarRoot({
   renderFactorySlot,
 }: SidebarRootComponentProps) {
   const panels = usePanels(snapshot => snapshot)
+  // A templated launch is a dedicated view of one hand-made group: the panel
+  // launchers, deployment switch, and settings entry would offer navigation
+  // out of it, so the shell drops them.
+  const templateMode = launch?.template === 'modellaunch' && launch.groupId !== undefined
   const unpinned = useEntryPins(ids => ids)
   const activePanelId = usePanelInfo(info => info.activePanelId)
   const hasEntryActions = useEntryActions(registered => registered)
@@ -425,7 +430,7 @@ export function SidebarRoot({
           className={css.scrollArea}
           data-sidebar-scrollport={wide ? '' : undefined}
         >
-          {panels.length > 0 && (
+          {!templateMode && panels.length > 0 && (
             <nav className={css.panelList} aria-label={t('panels.label')}>
               {panels.filter(({ id }) => id === FIXED_PANEL_ID || !hasEntryActions || !unpinned.includes(id)).map(({ id, label }) => (
                 <PanelRow
@@ -482,7 +487,7 @@ export function SidebarRoot({
             deployment's root. The button for the authority already serving
             this page is marked current and does nothing. */}
         <div className={css.deployments}>
-          {DEPLOYMENTS.map(({ name, url }) => {
+          {!templateMode && DEPLOYMENTS.map(({ name, url }) => {
             const current = isCurrentDeployment(url)
             return (
               <Tooltip
@@ -513,7 +518,7 @@ export function SidebarRoot({
           {renderSlot('sidebar.footer.action', { wide })}
         </div>
         <div className={css.settingsArea}>
-          {renderSlot('sidebar.settings', { wide })}
+          {!templateMode && renderSlot('sidebar.settings', { wide })}
         </div>
       </div>
     </div>

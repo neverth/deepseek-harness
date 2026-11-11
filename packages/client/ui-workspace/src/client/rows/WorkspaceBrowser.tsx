@@ -949,6 +949,8 @@ type CustomGroupTreeProps = Pick<
   groups: readonly CustomGroupMembership[]
   /** Complete members of the ungrouped bucket in the selected order. */
   ungroupedSessionIds: readonly SessionId[]
+  /** Omit the ungrouped bucket: a templated launch shows only its named group. */
+  hideUngrouped?: boolean
   /** Row order the sections follow; Last-updated ranks them by their newest member. */
   orderBy: SessionOrderBy
   rowState: SessionRowState
@@ -998,7 +1000,7 @@ function reorderIds(
  * @returns the grouped list body.
  */
 function CustomGroupTree({
-  list, groups, ungroupedSessionIds, orderBy, rowState, onLeaveArchivedOnly,
+  list, groups, ungroupedSessionIds, hideUngrouped, orderBy, rowState, onLeaveArchivedOnly,
   useSessionStatus, useRemoteAccess, useSessionAccess, useWorkspaceAccess,
   open, onSessionRenameRequest, usePanelInfo, onAcknowledge,
   setSessionOrder, moveCustomMember, moveCustomGroup, workspaceReady, animationResetKey,
@@ -1043,8 +1045,8 @@ function CustomGroupTree({
       expandedGroups,
       ungroupedOrder: ungroupedSessionIds,
       orderBy,
-    }),
-    [list, groups, rowState, statuses, expandedGroups, ungroupedSessionIds, orderBy],
+    }).filter(section => hideUngrouped !== true || section.key !== UNGROUPED_KEY),
+    [list, groups, rowState, statuses, expandedGroups, ungroupedSessionIds, orderBy, hideUngrouped],
   )
   const baselines = new Map(sections.map(section => [section.key, Math.max(SESSION_WATERMARK_BASE, requiredWatermark(
     section.sessions,
@@ -1432,6 +1434,7 @@ function SearchResults({
  */
 export function WorkspaceBrowser({
   wide,
+  launch,
   usePanelInfo,
   expandSidebar,
   useSectionScroller,
@@ -1503,6 +1506,17 @@ export function WorkspaceBrowser({
   const sessionOrderByAccount = useStore(s => s.sessionOrderByAccount)
   const customGroups = useStore(s => s.customGroups)
   const customMembers = useStore(s => s.customMembers)
+  // A templated launch confines the sidebar to the group its URL names. The
+  // stored grouping mode stays untouched, so dropping the parameters restores
+  // the reader's own view instead of a remembered template.
+  const focusedGroupId = launch?.template === 'modellaunch' ? launch.groupId : undefined
+  const shownGroupBy = focusedGroupId === undefined ? groupBy : 'custom'
+  const shownCustomGroups = useMemo(
+    () => focusedGroupId === undefined
+      ? customGroups
+      : customGroups.filter(group => group.id === focusedGroupId),
+    [customGroups, focusedGroupId],
+  )
   // The name field for a group the user is creating; null while none is open.
   const [groupDraft, setGroupDraft] = useState<string | null>(null)
   // Archived sessions are not openable: the row stays visible under the
@@ -1569,7 +1583,7 @@ export function WorkspaceBrowser({
     // Stored membership survives as plain strings; the Session list is the
     // authority on which of them are real, exactly as saved orders are read.
     const known = new Map(flatMemberIds.map(id => [id as string, id]))
-    return customGroups.map((group) => {
+    return shownCustomGroups.map((group) => {
       const members = (customMembers[group.id] ?? []).flatMap((id) => {
         const branded = known.get(id)
         return branded === undefined ? [] : [branded]
@@ -1582,7 +1596,7 @@ export function WorkspaceBrowser({
         sessionIds: orderBy === 'updated' ? orderByRecency(members, list.byId) : members,
       }
     })
-  }, [customGroups, customMembers, flatMemberIds, list.byId, orderBy])
+  }, [shownCustomGroups, customMembers, flatMemberIds, list.byId, orderBy])
   // The custom mode's bucket: every Session no hand-made group names.
   const customMemberIds = useMemo(
     () => new Set(customMemberships.flatMap(group => group.sessionIds)),
@@ -1814,7 +1828,7 @@ export function WorkspaceBrowser({
   // own displayed title without being a conflict with itself.
   const renameDuplicate = renameTarget !== null && renameTrimmed !== '' && (
     renameTarget.kind === 'group'
-      ? customGroups.some(group => group.id !== renameTarget.groupId && group.name === renameTrimmed)
+      ? shownCustomGroups.some(group => group.id !== renameTarget.groupId && group.name === renameTrimmed)
       : workspaces.some(w => w.workspaceId !== renameTarget.workspaceId && w.title === renameTrimmed)
   )
   const renameBlocked = renaming || renameTrimmed === ''
@@ -1856,10 +1870,10 @@ export function WorkspaceBrowser({
       <div className={clsx(css.sectionHeader, wide && searchSpacingMotionEnabled && css.searchSpacingMotion)} data-sidebar-workspace-header="">
         {wide && (
           <span className={clsx(css.sectionLabel, css.wide, searchExpanded && css.sectionLabelHidden)}>
-            {groupBy === 'flat' || groupBy === 'custom' ? t('section.sessions') : t('section.workspaces')}
+            {shownGroupBy === 'flat' || shownGroupBy === 'custom' ? t('section.sessions') : t('section.workspaces')}
           </span>
         )}
-        {wide && (
+        {wide && focusedGroupId === undefined && (
           <div className={clsx(css.searchSlot, searchExpanded && css.searchSlotExpanded)}>
             <div
               ref={searchRoot}
@@ -1916,7 +1930,8 @@ export function WorkspaceBrowser({
             </div>
           </div>
         )}
-        <div className={clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden)}>
+        {focusedGroupId === undefined && (
+          <div className={clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden)}>
           {wide && (
             <ViewOptionsMenu
               groupBy={groupBy}
@@ -1924,7 +1939,7 @@ export function WorkspaceBrowser({
               archivedFilter={archivedFilter}
               onGroupPick={actions.setGroupBy}
               onOrderPick={(mode) => {
-                if (mode === 'manual' && groupBy === 'custom') {
+                if (mode === 'manual' && shownGroupBy === 'custom') {
                   actions.syncCustomMemberOrders(Object.fromEntries(
                     customMemberships.map(group => [group.id, group.sessionIds]),
                   ))
@@ -1939,7 +1954,7 @@ export function WorkspaceBrowser({
               picking affordance has nothing to offer here: the region hides the
               button rather than leaving a dead one in the header. Hand-made
               grouping replaces that action with the one this mode needs. */}
-          {groupBy === 'custom' ? (
+          {shownGroupBy === 'custom' ? (
             <Tooltip label={t('group.new')} side="bottom" delayMs={500}>
               <button
                 type="button"
@@ -1966,7 +1981,8 @@ export function WorkspaceBrowser({
               </button>
             </Tooltip>
           )}
-        </div>
+          </div>
+        )}
         {/* Add flow + its error dialog (same package — direct composition). */}
         <WorkspacePickFlow
           t={t}
@@ -1989,7 +2005,7 @@ export function WorkspaceBrowser({
 
       {/* Naming a new group: Enter commits, Escape or leaving cancels. The
           field sits above the list so the committed section lands in view. */}
-      {wide && groupBy === 'custom' && groupDraft !== null && (
+      {wide && shownGroupBy === 'custom' && groupDraft !== null && (
         <div className={css.newGroupRow}>
           <input
             className={css.newGroupInput}
@@ -2033,7 +2049,7 @@ export function WorkspaceBrowser({
       {/* Always-mounted seat keeps the region's flex slot while the list
           itself is wide-only. */}
       <div ref={wide ? bindScrollerRef : undefined} className={css.listArea} data-sidebar-list-area="">
-        {wide && (normalizedQuery !== ''
+        {wide && (normalizedQuery !== '' && focusedGroupId === undefined
           ? (
             <SearchResults
               usePanelInfo={usePanelInfo}
@@ -2052,8 +2068,10 @@ export function WorkspaceBrowser({
               t={t}
             />
           )
-          : groupBy === 'custom'
-            ? (
+          : shownGroupBy === 'custom'
+            ? focusedGroupId !== undefined && shownCustomGroups.length === 0
+              ? <div className={css.empty}>{t('group.launchMissing')}</div>
+              : (
               <CustomGroupTree
                 useRemoteAccess={useRemoteAccess}
                 useSessionAccess={useSessionAccess}
@@ -2062,11 +2080,12 @@ export function WorkspaceBrowser({
                 list={list}
                 groups={customMemberships}
                 ungroupedSessionIds={orderedCustomUngroupedSessionIds}
+                hideUngrouped={focusedGroupId !== undefined}
                 orderBy={orderBy}
                 rowState={rowState}
                 onLeaveArchivedOnly={leaveArchivedOnly}
                 workspaceReady={workspaceReady}
-                animationResetKey={`${groupBy}/${orderBy}/${archivedFilter}`}
+                animationResetKey={`${shownGroupBy}/${orderBy}/${archivedFilter}`}
                 useSessionStatus={useSessionStatus}
                 open={guardedOpen}
                 onSessionRenameRequest={requestSessionRename}
@@ -2091,7 +2110,7 @@ export function WorkspaceBrowser({
                 t={t}
               />
             )
-            : groupBy === 'flat'
+            : shownGroupBy === 'flat'
               ? (
                 <FlatList
                   useSessionAccess={useSessionAccess}
@@ -2135,7 +2154,7 @@ export function WorkspaceBrowser({
                   ungroupedSessionIds={orderedUngroupedSessionIds}
                   workspaceReady={workspaceReady}
                   orderBy={orderBy}
-                  nestWorkspaces={groupBy === 'workspace-tree'}
+                  nestWorkspaces={shownGroupBy === 'workspace-tree'}
                   animationResetKey={`${groupBy}/${orderBy}/${archivedFilter}`}
                   groupExpansion={groupExpansion}
                   setGroupExpanded={actions.setGroupExpanded}

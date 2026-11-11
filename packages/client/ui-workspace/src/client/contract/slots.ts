@@ -49,6 +49,7 @@ import type { SessionActivity, WorkspaceId, WorkspaceView } from '@deepseek-ai/d
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { WorkspaceShortcutState } from '../shortcuts.ts'
+import type { WorkspaceLaunch } from '../launch.ts'
 import type { StartSessionOptions } from '../navigation.ts'
 import type {} from './toast.ts'
 import type { createWorkspaceViewStore } from '../stores.ts'
@@ -241,6 +242,8 @@ export type DirectoryPickingHooks = PropsHooks<DirectoryPickingInjected['hooks']
  * browsing region drives.
  */
 export type WorkspaceBrowserInjected = {
+  /** Group and template named by the page URL; fixed for this page's lifetime. */
+  launch?: WorkspaceLaunch
   /** Dismiss the settled Workspace dialog. */
   settleWorkspaceAction: () => void
   hooks: DirectoryPickingInjected['hooks'] & {
