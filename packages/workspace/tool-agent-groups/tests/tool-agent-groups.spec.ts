@@ -50,21 +50,27 @@ async function harness(
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
   const readTitleSnapshots = vi.fn(observations)
+  const setBoardUrl = vi.fn(async (_groupId: string, boardUrl: string) => {
+    if (group === undefined) throw new Error('agent groups: unknown group id')
+    return { id: group.id, name: group.name, sessionIds: group.sessionIds.map(SessionId), boardUrl }
+  })
   ctx.provide('sessionQuery', { readTitleSnapshots } as never)
   ctx.provide('agentGroups', {
     groupOf: (sessionId: SessionId) => group !== undefined && group.sessionIds.includes(sessionId)
       ? { id: group.id, name: group.name, sessionIds: group.sessionIds.map(SessionId) }
       : undefined,
+    setBoardUrl,
   } as never)
   await ctx.plugin(toolAgentGroups)
   const agent = await ctx.agentLoop.create(SessionId('session-a'), { provider: 'mock', model: 'mock' })
-  return { ctx, agent, readTitleSnapshots }
+  return { ctx, agent, readTitleSnapshots, setBoardUrl }
 }
 
 async function execute(
   ctx: Context,
   agent: Awaited<ReturnType<typeof harness>>['agent'],
-  args: Record<string, never> = {},
+  args: Record<string, unknown> = {},
+  name = 'group_members',
 ) {
   const toolSet = await ctx.tools.resolve({
     agent,
@@ -74,7 +80,7 @@ async function execute(
   try {
     return await executeToolFixture(ctx, {
       callId: ToolCallId(`groups-call-${++callNumber}`),
-      name: 'group_members',
+      name,
       arguments: args,
       signal: new AbortController().signal,
       toolSet,
@@ -167,5 +173,38 @@ describe('group_members', () => {
         { sessionId: 'session-b', title: null, current: false },
       ],
     })
+  })
+})
+
+describe('set_group_board', () => {
+  it('writes the board URL onto the calling Session\'s group', async () => {
+    const { ctx, agent, setBoardUrl } = await harness(
+      { id: 'custom:1', name: 'Release', sessionIds: ['session-a'] },
+    )
+    const url = 'http://10.37.242.122:8765/t/qa-20261111105329-8b272f20'
+    const result = await execute(ctx, agent, { url }, 'set_group_board')
+    expect(JSON.parse(text(result))).toEqual({
+      group: { id: 'custom:1', name: 'Release' },
+      boardUrl: url,
+    })
+    expect(setBoardUrl).toHaveBeenCalledWith('custom:1', url)
+  })
+
+  it('refuses an ungrouped Session without writing', async () => {
+    const { ctx, agent, setBoardUrl } = await harness(undefined)
+    const result = await execute(ctx, agent, { url: 'https://boards.example/qa' }, 'set_group_board')
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('belong to a custom sidebar group')
+    expect(setBoardUrl).not.toHaveBeenCalled()
+  })
+
+  it('surfaces a registry rejection to the model', async () => {
+    const { ctx, agent, setBoardUrl } = await harness(
+      { id: 'custom:1', name: 'Release', sessionIds: ['session-a'] },
+    )
+    setBoardUrl.mockRejectedValueOnce(new Error('agent groups: a board URL must be an absolute http(s) URL'))
+    const result = await execute(ctx, agent, { url: 'file:///etc/passwd' }, 'set_group_board')
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('absolute http(s) URL')
   })
 })

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Group shared directory",
+    "description": "Creates one shared .tmp directory per hand-made group inside its Workspace and announces the path to the model."
+  }
+}

@@ -72,6 +72,7 @@ import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import BrowserUseRegistry from '@deepseek-ai/dsh-browser-use'
 import * as StagehandBrowserTools from '@deepseek-ai/dsh-experimental-browser-use-stagehand-native'
 import TeamService from '@deepseek-ai/dsh-agent-team'
+import * as ToolGroups from '@deepseek-ai/dsh-tool-agent-groups'
 import * as ToolTeam from '@deepseek-ai/dsh-tool-agent-team'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import type PluginManager from '@deepseek-ai/dsh-plugin-manager'
@@ -618,6 +619,22 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'The kind-agnostic background-job controller: background bash commands and PTY sends are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers\' `ctx.jobs.start()`.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-agent-groups',
+    dir: 'tool-agent-groups',
+    source: 'packages/workspace/tool-agent-groups/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.agentGroups', 'ctx.sessionQuery'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      // Schema harvest never reads a group document or a Session title.
+      ctx.provide('agentGroups', { groupOf: () => undefined })
+      ctx.provide('sessionQuery', {})
+      await ctx.plugin(ToolGroups)
+    },
+    note:
+      'The runtime-context line and both tools read the hand-made sidebar group of the calling Session; '
+      + 'set_group_board records the group board URL the conversation column displays.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-agent-team',

@@ -37,13 +37,20 @@ export function ConversationMainPanel(props: ConversationSlotProps) {
   return (
     <div className={css.root} data-phase={phase}>
       {renderSlot('conversation.header', {})}
-      {renderFactorySlot('conversation.content', {
-        variant: 'main',
-        phase,
-        hero,
-      }, {
-        slots: CONTENT_SLOTS,
-      })}
+      <div className={css.sideRow}>
+        <div className={css.leftRail} data-conversation-left-rail="">
+          {renderSlot('conversation.left-rail', {})}
+        </div>
+        <div className={css.contentCol}>
+          {renderFactorySlot('conversation.content', {
+            variant: 'main',
+            phase,
+            hero,
+          }, {
+            slots: CONTENT_SLOTS,
+          })}
+        </div>
+      </div>
     </div>
   )
 }

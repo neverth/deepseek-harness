@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Hand-made session groups",
+    "description": "Stores the sidebar's hand-made session groups as a Host fact for tools and session context."
+  }
+}

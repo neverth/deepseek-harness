@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Manuell erstellte Sitzungsgruppen",
+    "description": "Speichert die in der Seitenleiste erstellten Sitzungsgruppen als Host-Fakt für Werkzeuge und Sitzungskontext."
+  }
+}

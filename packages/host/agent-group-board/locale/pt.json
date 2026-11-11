@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Proxy do painel do grupo",
+    "description": "Serve a página do painel de um grupo criado manualmente pela origem do DSH para a coluna de conversa."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "分组共享目录",
+    "description": "在每个分组所属的 Workspace 内创建共享的 .tmp 目录，并把路径告知模型。"
+  }
+}

@@ -20,6 +20,23 @@ const agentGroupDirectoryName = z.string().min(1).refine(
   { message: 'a shared directory name must be one path segment' },
 )
 
+/**
+ * The HTTP(S) page the Host serves through its same-origin board route. Only
+ * those two schemes are accepted so the Host fetch can never read a local
+ * file or another protocol.
+ */
+const agentGroupBoardUrl = z.string().min(1).refine(
+  (value) => {
+    try {
+      const { protocol } = new URL(value)
+      return protocol === 'http:' || protocol === 'https:'
+    } catch {
+      return false
+    }
+  },
+  { message: 'a board URL must be an absolute http(s) URL' },
+)
+
 /** One hand-made group: its browser-local identity, name, and ordered members. */
 export const agentGroupRecord = z.object({
   /** Browser-local identity, prefixed by the browser store so it never collides with a Workspace id. */
@@ -34,6 +51,11 @@ export const agentGroupRecord = z.object({
    * Host materializes the shared directory for this group.
    */
   dirName: agentGroupDirectoryName.optional(),
+  /**
+   * Upstream page the Host proxies into this group's board column. Written by
+   * the `set_group_board` tool; absent while the group has no board.
+   */
+  boardUrl: agentGroupBoardUrl.optional(),
 }).strict()
 
 /** One durable hand-made group, inferred from {@link agentGroupRecord}. */

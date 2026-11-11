@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Gemeinsames Gruppenverzeichnis",
+    "description": "Legt für jede manuell erstellte Gruppe ein gemeinsames .tmp-Verzeichnis im zugehörigen Arbeitsbereich an und meldet den Pfad an das Modell."
+  }
+}

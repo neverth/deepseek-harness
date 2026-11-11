@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Directorio compartido del grupo",
+    "description": "Crea un directorio .tmp compartido por grupo dentro de su espacio de trabajo y anuncia la ruta al modelo."
+  }
+}

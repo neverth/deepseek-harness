@@ -32,8 +32,14 @@ async function harness(pool = new MemoryMediaPool()) {
   return { ctx, registry: ctx.agentGroups, changes, pool }
 }
 
-function group(id: string, name: string, sessionIds: string[], dirName?: string): AgentGroupRecord {
-  return { id, name, sessionIds: sessionIds.map(SessionId), ...dirName === undefined ? {} : { dirName } }
+function group(id: string, name: string, sessionIds: string[], dirName?: string, boardUrl?: string): AgentGroupRecord {
+  return {
+    id,
+    name,
+    sessionIds: sessionIds.map(SessionId),
+    ...dirName === undefined ? {} : { dirName },
+    ...boardUrl === undefined ? {} : { boardUrl },
+  }
 }
 
 describe('AgentGroupRegistry', () => {
@@ -126,6 +132,53 @@ describe('AgentGroupRegistry', () => {
     const { registry } = await harness()
     await expect(registry.setDirectoryName('custom:missing', '2611110036-Release-a1b2c3'))
       .rejects.toThrow(/unknown group id/)
+  })
+
+  it('stores a board URL and keeps it across browser pushes and renames', async () => {
+    const { registry, changes } = await harness()
+    await registry.replace([group('custom:1', 'Release', ['s1'])])
+    const boardUrl = 'http://10.37.242.122:8765/t/qa-20261111105329-8b272f20'
+    const stored = await registry.setBoardUrl('custom:1', boardUrl)
+    expect(stored.boardUrl).toBe(boardUrl)
+    expect(registry.list()).toEqual([group('custom:1', 'Release', ['s1'], undefined, boardUrl)])
+    expect(changes).toHaveLength(2)
+
+    await expect(registry.setBoardUrl('custom:1', boardUrl)).resolves.toEqual(stored)
+    expect(changes).toHaveLength(2)
+
+    await expect(registry.replace([group('custom:1', 'Release renamed', ['s1'])]))
+      .resolves.toEqual([group('custom:1', 'Release renamed', ['s1'], undefined, boardUrl)])
+  })
+
+  it('reloads the board URL from the same medium', async () => {
+    const { registry, pool } = await harness()
+    await registry.replace([group('custom:1', 'Release', ['s1'])])
+    await registry.setBoardUrl('custom:1', 'https://boards.example/qa')
+
+    const reopened = await harness(pool)
+    expect(reopened.registry.groupOf(SessionId('s1'))?.boardUrl).toBe('https://boards.example/qa')
+  })
+
+  it('rejects a board URL for an unknown group', async () => {
+    const { registry } = await harness()
+    await expect(registry.setBoardUrl('custom:missing', 'https://boards.example/qa'))
+      .rejects.toThrow(/unknown group id/)
+  })
+
+  it('rejects stored board URLs that are not absolute http(s)', async () => {
+    const { registry } = await harness()
+    await registry.replace([group('custom:1', 'Release', ['s1'])])
+    for (const boardUrl of ['file:///etc/passwd', 'javascript:alert(1)', '/relative', 'not a url']) {
+      await expect(registry.setBoardUrl('custom:1', boardUrl))
+        .rejects.toThrow(/absolute http\(s\) URL/)
+    }
+    expect(registry.list()).toEqual([group('custom:1', 'Release', ['s1'])])
+  })
+
+  it('rejects a stored document whose board URL is not absolute http(s)', () => {
+    expect(agentGroupsDomainState.safeParse({
+      groups: [group('custom:1', 'Release', ['s1'], undefined, 'ftp://boards.example/qa')],
+    }).success).toBe(false)
   })
 
   it('rejects stored directory names that are not one path segment', () => {

@@ -1,8 +1,10 @@
 /**
  * Model-facing group awareness: one runtime-context line states the hand-made
- * sidebar group the calling Session belongs to, and the `group_members` tool
- * reads the Host's durable mapping for the Sessions grouped with it. Grouping
- * is a user-made browsing surface; these are its only model-visible facts.
+ * sidebar group the calling Session belongs to, the `group_members` tool reads
+ * the Host's durable mapping for the Sessions grouped with it, and
+ * `set_group_board` attaches the HTML board the group's conversation column
+ * shows. Grouping is a user-made browsing surface; these are its only
+ * model-visible facts.
  * @module @deepseek-ai/dsh-tool-agent-groups
  */
 
@@ -68,6 +70,15 @@ const VALUE_SCHEMA = {
   properties: {
     group: { ...GROUP_SCHEMA, required: true },
     members: { type: 'array', required: true, items: MEMBER_SCHEMA },
+  },
+} as const
+
+const BOARD_VALUE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    group: { ...GROUP_SCHEMA, required: true },
+    boardUrl: { type: 'string', required: true },
   },
 } as const
 
@@ -138,6 +149,32 @@ export function apply(ctx: Context, _config: Config = {}): void {
         }
       })
       return { group: { id: group.id, name: group.name }, members }
+    },
+  }))
+  ctx.tools.register(defineTool({
+    name: 'set_group_board',
+    description:
+      'Attach an HTML board page to this session\'s custom sidebar group. The Host serves that page '
+      + 'through a same-origin board column beside the conversation, so every session in the group '
+      + 'shows it. Pass the absolute http(s) URL of the page to show. Requires this session to belong '
+      + 'to a custom group.',
+    parameters: {
+      url: {
+        type: 'string',
+        required: true,
+        description: 'Absolute http(s) URL of the board page the Host should proxy.',
+      },
+    },
+    output: jsonOutput(BOARD_VALUE_SCHEMA),
+    async execute(args, exec) {
+      const session = exec.agent?.session
+      if (session === undefined) throw new Error('set_group_board requires an owning agent session')
+      const group = ctx.agentGroups.groupOf(session.id)
+      if (group === undefined) {
+        throw new Error('set_group_board requires this session to belong to a custom sidebar group')
+      }
+      await ctx.agentGroups.setBoardUrl(group.id, args.url)
+      return { group: { id: group.id, name: group.name }, boardUrl: args.url }
     },
   }))
 }

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Répertoire partagé du groupe",
+    "description": "Crée un répertoire .tmp partagé par groupe dans son espace de travail et annonce le chemin au modèle."
+  }
+}

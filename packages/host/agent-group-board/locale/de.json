@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Gruppenbrett-Proxy",
+    "description": "Liefert die Brettseite einer manuell erstellten Gruppe über den DSH-Ursprung für die Gesprächsspalte."
+  }
+}

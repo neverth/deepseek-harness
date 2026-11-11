@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Outils de connaissance du groupe",
+    "description": "Indique au modèle à quel groupe de la barre latérale il appartient, quelles sessions le partagent et où se trouve son tableau."
+  }
+}

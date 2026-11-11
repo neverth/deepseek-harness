@@ -97,6 +97,12 @@
     - id: agent-group-workspace
       name: '@deepseek-ai/dsh-agent-group-workspace'
 
+    # Same-origin proxy for a hand-made group's board page. The browser board
+    # column embeds `/agent-group-board?group=<id>`; only the URL stored on the
+    # group record is fetched, never one carried by the request.
+    - id: agent-group-board
+      name: '@deepseek-ai/dsh-host-agent-group-board'
+
     - id: session-reference
       name: '@deepseek-ai/dsh-session-reference'
 
@@ -433,6 +439,11 @@
     # Goal surface: GoalBar in the input dock over the goal session projection.
     - id: ui-goal
       name: '@deepseek-ai/dsh-client-ui-goal'
+
+    # Board column between the sidebar and the conversation, shown for the
+    # selected Session's hand-made group when that group carries a board URL.
+    - id: ui-agent-group-board
+      name: '@deepseek-ai/dsh-client-ui-agent-group-board'
 
     # The feedback surface: Like/Dislike in the assistant-message action
     # strip, the feedback dialog behind Dislike and /feedback with its

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Ferramentas de conhecimento do grupo",
+    "description": "Informa ao modelo a qual grupo da barra lateral ele pertence, quais sessões o compartilham e onde está o seu painel."
+  }
+}

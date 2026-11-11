@@ -119,6 +119,11 @@ export interface AgentGroupView {
   readonly name: string
   /** Member Session ids in the user's arranged order. */
   readonly sessionIds: readonly SessionId[]
+  /**
+   * Upstream page the Host proxies into this group's board column, written by
+   * the `set_group_board` tool. Absent while the group has no board.
+   */
+  readonly boardUrl?: string | undefined
 }
 
 /** Complete hand-made group document accepted from and echoed to a browser. */

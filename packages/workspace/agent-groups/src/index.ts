@@ -9,7 +9,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { DomainGlobal } from '@deepseek-ai/dsh-storage-domain'
-import { agentGroupsDomainSpec, agentGroupsDomainState } from './spec.ts'
+import { agentGroupRecord, agentGroupsDomainSpec, agentGroupsDomainState } from './spec.ts'
 import type { AgentGroupRecord, AgentGroupsDomainState } from './spec.ts'
 
 export { agentGroupRecord, agentGroupsDomainSpec, agentGroupsDomainState } from './spec.ts'
@@ -41,6 +41,7 @@ function sameGroups(left: readonly AgentGroupRecord[], right: readonly AgentGrou
       && group.id === other.id
       && group.name === other.name
       && group.dirName === other.dirName
+      && group.boardUrl === other.boardUrl
       && group.sessionIds.length === other.sessionIds.length
       && group.sessionIds.every((sessionId, position) => sessionId === other.sessionIds[position])
   })
@@ -93,7 +94,7 @@ export class AgentGroupRegistry extends Service {
    * naming a duplicate group id or placing one Session in two groups is
    * rejected before any write. An unchanged document resolves without writing.
    * @param groups - the browser's complete group document, validated at this durable boundary.
-   * @returns the stored groups: the accepted document plus the directory names already assigned.
+   * @returns the stored groups: the accepted document plus the Host-assigned directory names and board URLs.
    */
   replace(groups: readonly AgentGroupInput[]): Promise<readonly AgentGroupRecord[]> {
     return this.serialize(async () => {
@@ -113,11 +114,17 @@ export class AgentGroupRegistry extends Service {
       }
       const global = this.requireGlobal()
       // Browsers push only the editable fields, so a Host-assigned directory
-      // name survives every later push of the same group.
-      const storedNames = new Map(global.get().groups.map(group => [group.id, group.dirName]))
+      // name and a tool-written board URL survive every later push of the same
+      // group.
+      const stored = new Map(global.get().groups.map(group => [group.id, group]))
       const merged = parsed.map((group) => {
-        const dirName = storedNames.get(group.id)
-        return dirName === undefined ? group : { ...group, dirName }
+        const existing = stored.get(group.id)
+        if (existing === undefined) return group
+        return {
+          ...group,
+          ...existing.dirName === undefined ? {} : { dirName: existing.dirName },
+          ...existing.boardUrl === undefined ? {} : { boardUrl: existing.boardUrl },
+        }
       })
       if (sameGroups(global.get().groups, merged)) return global.get().groups
       await global.set({ groups: merged })
@@ -144,6 +151,35 @@ export class AgentGroupRegistry extends Service {
       if (group.dirName !== undefined) return group
       await global.set({ groups: groups.map((entry, position) => position === index ? { ...entry, dirName } : entry) })
       return { ...group, dirName }
+    })
+  }
+
+  /**
+   * Record the upstream board page the Host proxies into one group's board
+   * column. The URL is kept across later browser pushes, like the directory
+   * name, and a repeated value writes nothing.
+   * @param groupId - Group receiving the board.
+   * @param boardUrl - absolute http(s) page URL.
+   * @returns the stored group after the URL is durable.
+   * @throws when no stored group carries that id, or the URL is not absolute http(s).
+   */
+  setBoardUrl(groupId: string, boardUrl: string): Promise<AgentGroupRecord> {
+    return this.serialize(async () => {
+      const global = this.requireGlobal()
+      const groups = global.get().groups
+      const index = groups.findIndex(group => group.id === groupId)
+      const group = groups[index]
+      if (group === undefined) throw new Error(`agent groups: unknown group id '${groupId}'`)
+      const next = agentGroupRecord.parse({
+        id: group.id,
+        name: group.name,
+        sessionIds: group.sessionIds,
+        ...group.dirName === undefined ? {} : { dirName: group.dirName },
+        boardUrl,
+      })
+      if (group.boardUrl === next.boardUrl) return group
+      await global.set({ groups: groups.map((entry, position) => position === index ? next : entry) })
+      return next
     })
   }
 

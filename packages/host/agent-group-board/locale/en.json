@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Group board proxy",
+    "description": "Serves a hand-made group's board page through the DSH origin for the conversation column."
+  }
+}
