@@ -38,11 +38,18 @@ afterEach(() => {
  * what an untouched client shows; `locale: 'en'` pins the en copy instead.
  * The installed face backs the entry's standard `t` seat either way.
  */
-async function bench(options: { locale?: 'en' } = {}) {
+async function bench(options: {
+  locale?: 'en'
+  /** Page-URL launch options the shell reads for the templated-launch layout. */
+  launch?: { groupId: string | undefined; template: string | undefined }
+} = {}) {
   const runtime = await SlotTestRuntime.create()
   runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) } as never)
   runtime.ctx.provide('layout', { toggleSidebar: vi.fn() })
-  runtime.ctx.provide('uiWorkspace', { startSession: vi.fn() } as never)
+  runtime.ctx.provide('uiWorkspace', {
+    startSession: vi.fn(),
+    launch: options.launch ?? { groupId: undefined, template: undefined },
+  } as never)
   const locale = new LocaleRuntime(runtime.ctx)
   locale.register('common', { zh: commonZh, en: commonEn })
   if (options.locale === 'en') locale.setLocale('en')
@@ -96,6 +103,23 @@ describe('sidebar shell snapshots', () => {
     act(() => { locale.setLocale('en') })
     expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(2)
     expect(slot.view.queryByRole('button', { name: '新建会话' })).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('renders a templated group launch without brand, deployments, or settings entry', async () => {
+    const { runtime } = await bench({ locale: 'en', launch: { groupId: 'custom:2', template: 'modellaunch' } })
+    const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300, drawer: false })
+    // Only the capsule remains: the wordmark (brand) is a New-session button otherwise.
+    expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(1)
+    expect(slot.view.queryByText('3080')).toBeNull()
+    expect(slot.container).toMatchSnapshot('modellaunch expanded')
+    await runtime.dispose()
+  })
+
+  it('renders the templated rail without the brand mark', async () => {
+    const { runtime } = await bench({ locale: 'en', launch: { groupId: 'custom:2', template: 'modellaunch' } })
+    const slot = runtime.renderSlot('sidebar', { collapsed: true, width: 56, drawer: false })
+    expect(slot.container).toMatchSnapshot('modellaunch collapsed')
     await runtime.dispose()
   })
 

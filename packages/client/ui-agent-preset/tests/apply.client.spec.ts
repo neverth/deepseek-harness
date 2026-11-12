@@ -214,10 +214,14 @@ function declareConversation(slots: SlotRegistry): () => void {
   } as never, () => null)
 }
 
-/** A Workspace UI double recording new-session starts. */
-function uiWorkspaceDouble() {
+/** A Workspace UI double recording new-session starts and the page's launch options. */
+function uiWorkspaceDouble(launch: { groupId: string | undefined; template: string | undefined } = {
+  groupId: undefined,
+  template: undefined,
+}) {
   const starts: { workspaceId: unknown; options: unknown }[] = []
   return {
+    launch,
     starts,
     startSession: (workspaceId?: unknown, options?: unknown) => { starts.push({ workspaceId, options }) },
   }
@@ -510,6 +514,23 @@ describe('ui-agent-preset apply', () => {
     await fiber.dispose()
     expect(slots.entries('conversation.hero.agentPreset')).toHaveLength(0)
     expect(slots.entries('settings.section')).toHaveLength(0)
+    conversation()
+  })
+
+  it('a templated launch registers no new-session chip', async () => {
+    const { ctx, slots } = await bench()
+    declareRoot(slots)
+    const conversation = declareConversation(slots)
+    ctx.provide('conversation', {} as never)
+    ctx.provide('sessions', sessionsDouble(ctx, { byId: {} }) as never)
+    ctx.provide('uiWorkspace', uiWorkspaceDouble({
+      groupId: 'custom:2', template: 'modellaunch',
+    }) as never)
+    await ctx.plugin({ inject: [...inject, 'conversation', 'sessions', 'uiWorkspace'], apply }).await()
+
+    // The settings roster stays available; only the hero chip leaves the launcher flow.
+    expect(slots.entries('settings.section')).toHaveLength(1)
+    expect(slots.entries('conversation.hero.agentPreset')).toHaveLength(0)
     conversation()
   })
 

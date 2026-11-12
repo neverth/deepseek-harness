@@ -217,6 +217,11 @@ export function apply(ctx: ClientContext): void {
 
     scope.effect(() => {
       creatorDraft = startCreatorDraft
+      // A templated launch fixes the composition it names, so the new-session
+      // page shows no preset chip and leaves the choice off that flow entirely.
+      if (scope.uiWorkspace.launch.template === 'modellaunch') {
+        return () => { creatorDraft = undefined }
+      }
       const chip = scope.slots.register({
         name: 'conversation.hero.agentPreset',
         locale: 'settings.agentPreset',

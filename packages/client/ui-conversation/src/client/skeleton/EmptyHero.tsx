@@ -67,6 +67,8 @@ export interface HeroShellProps {
   t: HeroTranslate
   /** Authorized renderer for the hero brand-mark slot. */
   renderSlot: ConversationContentProps['renderSlot']
+  /** Render the brand mark; a templated launch shows the headline alone. */
+  brand?: boolean
   /** Overlay content after the stack (modals). */
   children?: ReactNode
 }
@@ -129,27 +131,29 @@ function HeroFish({ hovering }: { hovering: boolean }) {
  * @param props - see {@link HeroShellProps}.
  * @returns the centered hero element tree.
  */
-export function HeroShell({ t, renderSlot, children }: HeroShellProps) {
+export function HeroShell({ t, renderSlot, brand = true, children }: HeroShellProps) {
   const [hovering, setHovering] = useState(false)
   return (
     <div className={css.root}>
       <div className={css.stack}>
         <div className={css.headline}>
           {/* figma 34:10412: fish 34×25 leading the headline, gap 10. */}
-          <span
-            className={css.fishHitbox}
-            onPointerEnter={(event) => {
-              if (event.pointerType !== 'touch'
-                && window.matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)').matches) {
-                setHovering(true)
-              }
-            }}
-            onPointerLeave={() => { setHovering(false) }}
-          >
-            {renderSlot('conversation.hero.brand.mark', { size: 34, className: css.fish }, {
-              fallback: <HeroFish hovering={hovering} />,
-            })}
-          </span>
+          {brand && (
+            <span
+              className={css.fishHitbox}
+              onPointerEnter={(event) => {
+                if (event.pointerType !== 'touch'
+                  && window.matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)').matches) {
+                  setHovering(true)
+                }
+              }}
+              onPointerLeave={() => { setHovering(false) }}
+            >
+              {renderSlot('conversation.hero.brand.mark', { size: 34, className: css.fish }, {
+                fallback: <HeroFish hovering={hovering} />,
+              })}
+            </span>
+          )}
           <span className={css.titleGroup}>
             {/* Own element: keeps the headline text addressable apart from the badge. */}
             <span>{t('hero.headline')}</span>

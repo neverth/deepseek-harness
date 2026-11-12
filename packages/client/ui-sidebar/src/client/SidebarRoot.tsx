@@ -315,7 +315,7 @@ export function SidebarRoot({
         aria-keyshortcuts={shortcut?.aria}
         onClick={() => { toggleSidebar() }}
       >
-        {!wide && !windowsTitlebar && (
+        {!wide && !windowsTitlebar && !templateMode && (
           <span className={css.railMark} aria-hidden="true">
             {renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: <FishLogo size={24} /> })}
           </span>
@@ -357,7 +357,7 @@ export function SidebarRoot({
             (a button would subtract itself through the global no-drag rule);
             the collapsed rail's logo is the expand toggle below instead.
             Mouse clicks on the local-build fallbacks copy the version instead. */}
-        {wide && (() => {
+        {wide && !templateMode && (() => {
           const identity = (
             <span className={css.brandIdentity} aria-hidden="true">
               <span className={css.brandMark}>

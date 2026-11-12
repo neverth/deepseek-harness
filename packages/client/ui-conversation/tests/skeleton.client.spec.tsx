@@ -435,6 +435,26 @@ describe('Hero chrome', () => {
     expect(brandMarkOwner.className).toBeTypeOf('string')
     expect(renderSlot.mock.calls[0]?.[2]?.fallback).toBeTruthy()
   })
+
+  it('omits the brand mark when the hero is asked to show the headline alone', () => {
+    const renderSlot = vi.fn<(key: string, owner: object, opts?: { fallback?: ReactNode }) => ReactNode>(() => null)
+    const view = render(<HeroShell t={makeTranslate(en, commonEn)} renderSlot={renderSlot as never} brand={false} />)
+    expect(view.getByText('Into the Unknown')).toBeTruthy()
+    expect(view.getByText('Preview')).toBeTruthy()
+    expect(renderSlot).not.toHaveBeenCalled()
+    expect(view.container.querySelector('svg')).toBeNull()
+  })
+
+  it('a modellaunch page starts the hero without the brand mark', () => {
+    window.history.replaceState({}, '', '/?group=custom:2&template=modellaunch')
+    try {
+      const b = mount(sessionSnapshotOf({ blank: true }))
+      expect(b.view.getByText('探索未至之境')).toBeTruthy()
+      expect(b.slotCalls).not.toContain('conversation.hero.brand.mark')
+    } finally {
+      window.history.replaceState({}, '', '/')
+    }
+  })
 })
 
 describe('ConversationRoot resident composer', () => {
