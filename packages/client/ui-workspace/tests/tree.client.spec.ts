@@ -519,14 +519,15 @@ describe('deriveGroups', () => {
     expect(child(named.id)).toMatchObject({
       title: 'Named label',
       running: true,
-      completed: true,
-      awaitingAck: true,
+      completed: false,
       cwd: '/work/named',
       preview: 'latest child prompt',
       depth: 1,
       subagent: true,
       parentId: parent.id,
     })
+    // A child row reports activity only; the reminder stays with the ordinary parent.
+    expect(child(named.id).awaitingAck).toBeUndefined()
     expect(child(labelled.id).title).toBe('Labelled')
     expect(child(bare.id).title).toBe('')
     expect(child(bare.id).preview).toBeUndefined()

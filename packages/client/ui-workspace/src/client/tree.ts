@@ -568,7 +568,9 @@ function subagentRows(
  * @param list - sessions list snapshot.
  * @param statuses - unified UI status by Session.
  * @param archived - registry-global archive set.
- * @returns a nested row showing the agent name and its latest prompt.
+ * @returns a nested row showing the agent name and its latest prompt; its own
+ * activity is the only status it reports, so completion reminders stay with the
+ * ordinary parent Session.
  */
 function subagentNode(
   row: SubagentRow,
@@ -587,8 +589,7 @@ function subagentNode(
     blank: false,
     running: status?.running ?? row.summary.running,
     runningSubagentCount: runningChildCount(list, row.summary.id, statuses),
-    completed: status?.completionUnread === true,
-    awaitingAck: status?.completionPendingAck === true,
+    completed: false,
     pinned: false,
     archived: archived.has(row.summary.id),
     updatedAt: row.summary.updatedAt,
