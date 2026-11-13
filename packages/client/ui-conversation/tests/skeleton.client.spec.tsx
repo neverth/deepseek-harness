@@ -190,6 +190,7 @@ function mount(
   const inputActions = wiring.actions
   const stop = vi.fn()
   const open = vi.fn()
+  const prefillPrompt = vi.fn<(text: string) => void>()
   const slotCalls: string[] = []
   const headerFactory = vi.fn<ConversationSessionHeaderSlotProps['renderFactorySlot']>(() => null)
   const lineageOwners: ConversationHeaderLineageOwnerProps[] = []
@@ -376,6 +377,7 @@ function mount(
       renderSlotChain,
       renderFactorySlot,
       selectWorkspace: retargetWorkspace,
+      prefillPrompt,
       t,
     }
     const useFactorySlot = ((name: string, fallback: (props: never) => ReactNode) => (
@@ -407,7 +409,8 @@ function mount(
   const props: ConversationSlotProps = { ...runtimeProps, renderSlot, renderFactorySlot }
   const view = render(<ConversationMainPanel {...props} />)
   return {
-    view, store, wiring, sink, retargetWorkspace, session, conversation, slotCalls, headerFactory, lineageOwners, seatOwners, open,
+    view, store, wiring, sink, retargetWorkspace, prefillPrompt, session, conversation, slotCalls,
+    headerFactory, lineageOwners, seatOwners, open,
     pickerOwner: () => pickerOwner,
     frameOwner: () => frameOwners.at(-1),
     setPinned,
@@ -451,6 +454,20 @@ describe('Hero chrome', () => {
       const b = mount(sessionSnapshotOf({ blank: true }))
       expect(b.view.getByText('探索未至之境')).toBeTruthy()
       expect(b.slotCalls).not.toContain('conversation.hero.brand.mark')
+      expect(b.view.queryByText('为你推荐')).toBeNull()
+    } finally {
+      window.history.replaceState({}, '', '/')
+    }
+  })
+
+  it('a templated home fixes the Workspace and pre-fills a recommended task', () => {
+    window.history.replaceState({}, '', '/?template=modellaunch')
+    try {
+      const b = mount(sessionSnapshotOf({ blank: true }))
+      expect(b.view.queryByRole('button', { name: '选择工作区' })).toBeNull()
+      expect(b.view.getByText('为你推荐')).toBeTruthy()
+      fireEvent.click(b.view.getByRole('button', { name: /模型上线测试准出/ }))
+      expect(b.prefillPrompt).toHaveBeenCalledExactlyOnceWith(zh['hero.recommend.modelLaunch.prompt'])
     } finally {
       window.history.replaceState({}, '', '/')
     }

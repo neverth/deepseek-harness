@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { IconChevronDownOutlineRegular, usesModelLaunchTemplate } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineRegular, readWorkspaceLaunch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
 import type { ConversationContentProps, ConversationViewsProps, InputZone } from '../contract/slots.ts'
@@ -28,7 +28,7 @@ export function ConversationContent(props: ConversationContentProps) {
   const {
     sessionId, phase, hero, useSession, useSessions, useSessionStatus,
     useWorkspaces, useInput, useComposerBlock, renderSlot, renderSlotChain,
-    selectWorkspace, t, useFactorySlot,
+    selectWorkspace, prefillPrompt, t, useFactorySlot,
   } = props
   const session = useSession(snapshot => snapshot)
   const Views = useFactorySlot('views', ConversationSessionView)
@@ -181,6 +181,11 @@ export function ConversationContent(props: ConversationContentProps) {
   // bar is ONE session-maybe slot rendered unconditionally — inert is a prop,
   // not a different tree, so the textarea DOM survives the transition.
   const inert = sessionId === undefined || (hero && chipTitle === undefined)
+  // A templated launch drops the model-launch chrome. Its home form (no group)
+  // also fixes the Workspace and offers ready-made task prompts.
+  const launch = readWorkspaceLaunch(window.location.search)
+  const templateMode = launch.template === 'modellaunch'
+  const templateHome = templateMode && launch.groupId === undefined
   // A raised block is the same inert posture with the blocker's own reason:
   // one disabled textarea, never a second tree. The no-workspace state wins
   // when both hold — picking a workspace is the earlier prerequisite.
@@ -208,12 +213,26 @@ export function ConversationContent(props: ConversationContentProps) {
         <HeroShell
           t={t}
           renderSlot={renderSlot}
-          brand={!usesModelLaunchTemplate(window.location.search)}
+          brand={!templateMode}
         />
       )}
-      {hero && heroWorkspaceRow}
+      {hero && !templateHome && heroWorkspaceRow}
       {zone !== undefined && renderSlot('conversation.input.dock', zone)}
       {inputBar}
+      {hero && templateHome && (
+        <section className={css.recommendations} aria-label={t('hero.recommend.title')}>
+          <div className={css.recommendationsTitle}>{t('hero.recommend.title')}</div>
+          <button
+            type="button"
+            className={css.recommendationCard}
+            onClick={() => { prefillPrompt(t('hero.recommend.modelLaunch.prompt')) }}
+          >
+            <span className={css.recommendationName}>{t('hero.recommend.modelLaunch.title')}</span>
+            <span className={css.recommendationTag}>{t('hero.recommend.modelLaunch.tag')}</span>
+            <span className={css.recommendationReason}>{t('hero.recommend.modelLaunch.description')}</span>
+          </button>
+        </section>
+      )}
     </div>
   )
 

@@ -390,6 +390,14 @@ export function apply(ctx: Context, config: Config = Config({})): void {
           }
         }
       }),
+      prefillPrompt: (text) => {
+        if (sessionId === undefined) return
+        const shell = inputHub.shell(sessionId)
+        // A submission in flight owns the draft until it settles.
+        if (shell.snapshot.phase !== 'plain') return
+        shell.setDraft(text)
+        shell.focus()
+      },
     }),
   }, ConversationContent)
 

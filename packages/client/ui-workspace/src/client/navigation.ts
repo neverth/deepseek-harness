@@ -400,16 +400,18 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const groupId = this.launch.groupId
     if (groupId === undefined) return () => {}
     let done = false
+    // Read through a call: the synchronous attempt sets the flag inside a closure.
+    const finished = (): boolean => done
     let stopView = (): void => {}
     let stopSessions = (): void => {}
     const finish = (): void => {
-      if (done) return
+      if (finished()) return
       done = true
       stopView()
       stopSessions()
     }
     const attempt = (): void => {
-      if (done) return
+      if (finished()) return
       const state = this.view.getSnapshot()
       if (!state.customGroups.some(group => group.id === groupId)) return
       // One write only: expanding inside every notification would feed the
@@ -429,7 +431,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       if (first !== undefined) this.openSession(SessionId(first))
     }
     attempt()
-    if (done) return () => {}
+    if (finished()) return () => {}
     stopView = this.view.subscribe(attempt)
     stopSessions = this.sessions.list.subscribe(attempt)
     return finish
@@ -565,7 +567,9 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       && !workspaces.archivedSessionIds.includes(summary.id)) {
       sessionId = await this.restoreBlank(workspace.workspaceId, summary.id)
     }
-    let target = workspace?.workspaceId ?? recentWorkspace(workspaces.items, sessions.byId)
+    let target = workspace?.workspaceId
+      ?? (launchHome ? launchHomeWorkspace(workspaces.items) : undefined)
+      ?? recentWorkspace(workspaces.items, sessions.byId)
     if (target === undefined && workspaces.items.length === 0 && sessions.ids.length === 0) {
       const prepared = await this.initializeDefaultWorkspace(navigation)
       if (navigation.aborted) return
@@ -654,6 +658,14 @@ function creationFailureMessage(error: unknown): string {
   const refused = sessionCreateErrorOf(error)
   if (refused !== undefined) return `${refused.rpcError.code}: ${refused.rpcError.message}`
   return error instanceof Error ? error.message : String(error)
+}
+
+/** The Workspace the model-launch home opens, when the Host has one by this title. */
+const MODEL_LAUNCH_WORKSPACE_TITLE = 'ark_all'
+
+/** The model-launch Workspace, so the templated home does not depend on recency. */
+function launchHomeWorkspace(workspaces: readonly WorkspaceView[]): WorkspaceId | undefined {
+  return workspaces.find(item => item.title === MODEL_LAUNCH_WORKSPACE_TITLE)?.workspaceId
 }
 
 /** Stable tie-breaking follows Host Workspace order. */

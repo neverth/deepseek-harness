@@ -698,6 +698,27 @@ describe('Conversation inject API', () => {
     await b.runtime.dispose()
   })
 
+  it('pre-fills a ready draft from a recommended task and ignores a sending composer', async () => {
+    const b = await bench()
+    const { state, actions } = b.inputApi(ROOT)
+    b.residentApi(ROOT).prefillPrompt('ready-made prompt')
+    expect(state.getSnapshot().draft).toBe('ready-made prompt')
+
+    // No Session yet: the hero before a Workspace pick has no draft to fill.
+    b.residentApi(undefined).prefillPrompt('ignored')
+    expect(state.getSnapshot().draft).toBe('ready-made prompt')
+
+    const pending = Promise.withResolvers<Awaited<ReturnType<ISession['prompt']>>>()
+    b.sessionFake.prompt.mockReturnValueOnce(pending.promise)
+    actions.submit()
+    await vi.waitFor(() => { expect(state.getSnapshot().phase).toBe('sending') })
+    b.residentApi(ROOT).prefillPrompt('late prompt')
+    expect(state.getSnapshot().draft).toBe('ready-made prompt')
+    pending.resolve({ ok: true, value: { accepted: true } })
+    await vi.waitFor(() => { expect(state.getSnapshot().phase).toBe('plain') })
+    await b.runtime.dispose()
+  })
+
   it('leaves a draft whose message is still being sent with its Session', async () => {
     const b = await bench()
     const pending = Promise.withResolvers<Awaited<ReturnType<ISession['prompt']>>>()

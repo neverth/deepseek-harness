@@ -377,6 +377,18 @@ describe('UiWorkspaceService', () => {
     expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('a') })
   })
 
+  it('opens the model-launch Workspace on a templated home', async () => {
+    const b = bench({
+      sessions: sessionState([summary('recent', { cwd: '/w/recent' })]),
+      workspaces: workspaceState([workspace('ark_all'), workspace('recent', [sid('recent')])]),
+      launch: { groupId: undefined, template: 'modellaunch' },
+    })
+    await vi.waitFor(() => {
+      expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('created-ark_all'), { source: 'mainView' })
+    })
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('ark_all') })
+  })
+
   it('adds a Session started from a templated launch to the launched group', async () => {
     const b = bench({
       workspaces: workspaceState([workspace('w1')]),
