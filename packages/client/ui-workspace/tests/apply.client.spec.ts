@@ -1,7 +1,7 @@
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
 import { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
   ISessions, SessionListState, SessionReference, SessionSnapshot, SessionSummary,
 } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -35,6 +35,13 @@ import { apply as hostApply } from '../src/index.ts'
 import { SECTION_HOOK_CONTEXT, SECTION_INJECT } from './section-scroller.client.ts'
 
 const sid = (id: string) => id as SessionId
+
+// `apply` reads the page URL for the group launch; this Node lane has no jsdom
+// window, and an unrelated test may restore every global it stubbed.
+beforeEach(() => {
+  vi.stubGlobal('window', { location: { href: 'http://localhost/', search: '', hash: '' } })
+})
+afterAll(() => { vi.unstubAllGlobals() })
 const summary = (id: string, updatedAt: number): SessionSummary => ({
   id: sid(id), displayTitle: id, running: false, blank: false, updatedAt, retainedBy: {},
 })

@@ -133,7 +133,7 @@ export function apply(ctx: Context): void {
   // names a group also adopts Host groups it does not hold yet.
   const launch = readWorkspaceLaunch(window.location.search)
   ctx.effect(
-    () => mirrorViewSnapshots(workspaces, viewInstance, launch.groupId !== undefined),
+    () => mirrorViewSnapshots(workspaces, viewInstance, launch.groupId),
     'ui-workspace: view snapshots',
   )
   const viewStore: typeof viewHandle = { ...viewHandle, create: () => viewInstance }

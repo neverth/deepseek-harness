@@ -20,6 +20,7 @@ function pushedGroups(workspaces: TestWorkspaces): unknown[] {
 afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('mirrorViewSnapshots', () => {
@@ -120,7 +121,7 @@ describe('mirrorViewSnapshots', () => {
     const workspaces = new TestWorkspaces(stabilize)
     workspaces.stub('listGroups', async () => [{ id: 'custom:9', name: 'Host', sessionIds: [SessionId('s9')] }])
     const view = createWorkspaceViewStore().create()
-    const dispose = mirrorViewSnapshots(workspaces, view, true)
+    const dispose = mirrorViewSnapshots(workspaces, view, 'custom:9')
     await flush()
     expect(view.getSnapshot().customGroups).toEqual([{ id: 'custom:9', name: 'Host' }])
     expect(view.getSnapshot().customMembers['custom:9']).toEqual(['s9'])
@@ -135,11 +136,91 @@ describe('mirrorViewSnapshots', () => {
     workspaces.stub('listGroups', async () => [{ id: 'custom:1', name: 'Host', sessionIds: [SessionId('s9')] }])
     const view = createWorkspaceViewStore().create()
     view.actions.createCustomGroup('Local')
-    const dispose = mirrorViewSnapshots(workspaces, view, true)
+    const dispose = mirrorViewSnapshots(workspaces, view, 'custom:2')
     await flush()
     expect(view.getSnapshot().customGroups).toEqual([{ id: 'custom:1', name: 'Local' }])
     expect(view.getSnapshot().customMembers['custom:1']).toEqual([])
     expect(pushedGroups(workspaces)).toEqual([])
+    dispose()
+  })
+
+  it('adds Host members the launched group predates', async () => {
+    vi.useFakeTimers()
+    const workspaces = new TestWorkspaces(stabilize)
+    workspaces.stub('listGroups', async () => [
+      { id: 'custom:9', name: 'Host', sessionIds: [SessionId('s1'), SessionId('s2')] },
+      { id: 'custom:10', name: 'Other', sessionIds: [SessionId('s3')] },
+    ])
+    const view = createWorkspaceViewStore().create()
+    view.actions.createCustomGroup('Local')
+    view.actions.moveCustomMember('s4', 'custom:1')
+    view.actions.adoptHostGroups([{ id: 'custom:9', name: 'Host', sessionIds: ['s1'] }])
+    const dispose = mirrorViewSnapshots(workspaces, view, 'custom:9')
+    await flush()
+    // The launched group takes the Host's later member; the local group and the
+    // other Host group keep their own memberships.
+    expect(view.getSnapshot().customMembers['custom:9']).toEqual(['s1', 's2'])
+    expect(view.getSnapshot().customMembers['custom:1']).toEqual(['s4'])
+    expect(view.getSnapshot().customMembers['custom:10']).toEqual(['s3'])
+    expect(pushedGroups(workspaces)).toEqual([])
+    dispose()
+  })
+
+  it('skips a debounced push whose document matches the stored one again', async () => {
+    vi.useFakeTimers()
+    const workspaces = new TestWorkspaces(stabilize)
+    const view = createWorkspaceViewStore().create()
+    const dispose = mirrorViewSnapshots(workspaces, view)
+    await flush()
+    expect(pushedGroups(workspaces)).toEqual([[]])
+
+    // Create and remove within one quiet period: the timer still fires, but the
+    // document it would push already matches the Host.
+    view.actions.createCustomGroup('Release')
+    view.actions.deleteCustomGroup('custom:1')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flush()
+    expect(pushedGroups(workspaces)).toEqual([[]])
+    dispose()
+  })
+
+  it('pushes a persisted group whose members entry is missing as empty membership', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => JSON.stringify({
+        groupBy: 'workspace',
+        orderBy: 'updated',
+        groupExpansion: {},
+        sessionOrderByAccount: {},
+        customGroups: [{ id: 'custom:9', name: 'Host' }],
+        customMembers: {},
+        customGroupSeq: 9,
+        archivedFilter: 'default',
+      }),
+      setItem: () => {},
+      removeItem: () => {},
+    })
+    const workspaces = new TestWorkspaces(stabilize)
+    const view = createWorkspaceViewStore().create()
+    const dispose = mirrorViewSnapshots(workspaces, view)
+    await flush()
+    expect(pushedGroups(workspaces)).toEqual([[{ id: 'custom:9', name: 'Host', sessionIds: [] }]])
+    dispose()
+  })
+
+  it('reports a refused view snapshot and keeps mirroring', async () => {
+    vi.useFakeTimers()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const workspaces = new TestWorkspaces(stabilize)
+    workspaces.stub('saveViewSnapshot', () => Promise.reject(new Error('Host unavailable')))
+    const view = createWorkspaceViewStore().create()
+    const dispose = mirrorViewSnapshots(workspaces, view)
+    await flush()
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+    await flush()
+    expect(error).toHaveBeenCalledWith(
+      '[ui-workspace] saving the Host view snapshot failed:',
+      expect.objectContaining({ message: 'Host unavailable' }),
+    )
     dispose()
   })
 

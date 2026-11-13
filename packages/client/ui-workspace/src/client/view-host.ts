@@ -24,15 +24,16 @@ const GROUPS_DEBOUNCE_MS = 1_000
  * Push this browser's view document and hand-made groups to the Host.
  * @param workspaces - Client Workspace service carrying the snapshot Remote methods.
  * @param view - the browser's single view-store instance.
- * @param adoptHostGroups - merge Host-named groups this browser does not hold;
- * set only for a page whose URL names a group, so an ordinary page keeps its
- * own local view.
+ * @param launchGroupId - the group a page URL names; set only for a group link,
+ * so an ordinary page keeps its own local view. A launched page also takes the
+ * members the Host knows for that group, including Sessions started through the
+ * task-launch endpoint after this browser stored its copy.
  * @returns the disposer stopping the timer and subscription; it must run on plugin teardown.
  */
 export function mirrorViewSnapshots(
   workspaces: IWorkspaces,
   view: WorkspaceViewInstance,
-  adoptHostGroups = false,
+  launchGroupId?: string,
 ): () => void {
   let pushedGroups: string | undefined
   let groupTimer: ReturnType<typeof setTimeout> | undefined
@@ -86,9 +87,16 @@ export function mirrorViewSnapshots(
     if (hostGroups.length > 0) {
       // A group link opened in a browser without this document (another
       // machine, a fresh profile) shows the Host's groups instead of an empty
-      // view; groups this browser already holds stay untouched so its own
-      // edits remain visible.
-      if (adoptHostGroups) view.actions.adoptHostGroups(hostGroups)
+      // view; groups this browser already holds keep their names and their own
+      // memberships, except the launched group, which also takes members the
+      // Host learned after this browser saved its copy.
+      if (launchGroupId !== undefined) view.actions.adoptHostGroups(hostGroups)
+      const launched = launchGroupId === undefined
+        ? undefined
+        : hostGroups.find(group => group.id === launchGroupId)
+      if (launched !== undefined) {
+        for (const sessionId of launched.sessionIds) view.actions.moveCustomMember(sessionId, launched.id)
+      }
       // Record the local copy as already pushed so unrelated view changes do
       // not schedule a replacement of the Host's document.
       pushedGroups = JSON.stringify(groupDocument())
