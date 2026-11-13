@@ -1506,11 +1506,14 @@ export function WorkspaceBrowser({
   const sessionOrderByAccount = useStore(s => s.sessionOrderByAccount)
   const customGroups = useStore(s => s.customGroups)
   const customMembers = useStore(s => s.customMembers)
-  // A templated launch confines the sidebar to the group its URL names. The
-  // stored grouping mode stays untouched, so dropping the parameters restores
-  // the reader's own view instead of a remembered template.
-  const focusedGroupId = launch?.template === 'modellaunch' ? launch.groupId : undefined
-  const shownGroupBy = focusedGroupId === undefined ? groupBy : 'custom'
+  // A templated launch is a dedicated launch surface: with a group it confines
+  // the sidebar to that group; without one it shows the hand-made groups as the
+  // home for new tasks. The stored grouping mode stays untouched, so dropping
+  // the parameters restores the reader's own view instead of a remembered
+  // template.
+  const templateMode = launch?.template === 'modellaunch'
+  const focusedGroupId = templateMode ? launch.groupId : undefined
+  const shownGroupBy = templateMode ? 'custom' : groupBy
   const shownCustomGroups = useMemo(
     () => focusedGroupId === undefined
       ? customGroups
@@ -1873,7 +1876,7 @@ export function WorkspaceBrowser({
             {shownGroupBy === 'flat' || shownGroupBy === 'custom' ? t('section.sessions') : t('section.workspaces')}
           </span>
         )}
-        {wide && focusedGroupId === undefined && (
+        {wide && !templateMode && (
           <div className={clsx(css.searchSlot, searchExpanded && css.searchSlotExpanded)}>
             <div
               ref={searchRoot}
@@ -1930,7 +1933,7 @@ export function WorkspaceBrowser({
             </div>
           </div>
         )}
-        {focusedGroupId === undefined && (
+        {!templateMode && (
           <div className={clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden)}>
           {wide && (
             <ViewOptionsMenu
@@ -2049,7 +2052,7 @@ export function WorkspaceBrowser({
       {/* Always-mounted seat keeps the region's flex slot while the list
           itself is wide-only. */}
       <div ref={wide ? bindScrollerRef : undefined} className={css.listArea} data-sidebar-list-area="">
-        {wide && (normalizedQuery !== '' && focusedGroupId === undefined
+        {wide && (normalizedQuery !== '' && !templateMode
           ? (
             <SearchResults
               usePanelInfo={usePanelInfo}

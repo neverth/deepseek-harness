@@ -1,7 +1,7 @@
 /**
  * Page-URL launch options shared by the client surfaces a group link drives.
- * A page carries `group=<hand-made group id>` and optionally
- * `template=modellaunch`; the values stay fixed for the page's lifetime.
+ * A page may carry `group=<hand-made group id>`, `template=modellaunch`, or
+ * both; the values stay fixed for the page's lifetime.
  * @module
  */
 
@@ -25,15 +25,18 @@ const TEMPLATES: readonly WorkspaceLaunchTemplate[] = ['modellaunch']
 /**
  * Read the launch options from a query string.
  * @param search - `location.search`, with or without its leading `?`.
- * @returns the named group and its recognized template; a template without a group is ignored.
+ * @returns the named group and its recognized template; either may stand alone.
  */
 export function readWorkspaceLaunch(search: string): WorkspaceLaunch {
   const params = new URLSearchParams(search)
   const groupId = params.get('group')?.trim()
-  if (groupId === undefined || groupId === '') return NO_WORKSPACE_LAUNCH
   const requested = params.get('template')
   const template = TEMPLATES.find(candidate => candidate === requested)
-  return { groupId, template }
+  if ((groupId === undefined || groupId === '') && template === undefined) return NO_WORKSPACE_LAUNCH
+  return {
+    groupId: groupId === undefined || groupId === '' ? undefined : groupId,
+    template,
+  }
 }
 
 /**

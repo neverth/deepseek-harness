@@ -541,7 +541,12 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       }
       return
     }
-    const saved = this.selection.getSnapshot()
+    // The templated home without a group always starts on a New Session, so a
+    // selection restored from an earlier page cannot put an old task in front
+    // of the reader. A group link restores nothing either: it focuses its own
+    // first member.
+    const launchHome = this.launch.template === 'modellaunch' && this.launch.groupId === undefined
+    const saved = launchHome ? {} : this.selection.getSnapshot()
     if (saved.subagentAddress !== undefined) {
       this.replaceMain(saved.subagentAddress, this.lifetime.signal, 'preserve')
       return

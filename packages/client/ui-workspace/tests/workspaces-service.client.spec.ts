@@ -364,6 +364,19 @@ describe('UiWorkspaceService', () => {
     expect(open).toHaveBeenCalledExactlyOnceWith(sid('first'))
   })
 
+  it('starts on a New Session instead of restoring the saved selection on a templated home', async () => {
+    persistSelection({ sessionId: sid('saved') })
+    const b = bench({
+      sessions: sessionState([summary('saved', { cwd: '/w/a' })]),
+      workspaces: workspaceState([workspace('a', [sid('saved')])]),
+      launch: { groupId: undefined, template: 'modellaunch' },
+    })
+    await vi.waitFor(() => {
+      expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('created-a'), { source: 'mainView' })
+    })
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('a') })
+  })
+
   it('adds a Session started from a templated launch to the launched group', async () => {
     const b = bench({
       workspaces: workspaceState([workspace('w1')]),
@@ -1125,6 +1138,21 @@ describe('UiWorkspaceService', () => {
     })
     expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('saved'), { source: 'mainView' })
     expect(b.sessions.create).not.toHaveBeenCalled()
+  })
+
+  it('pins the shared Session from the page URL and ignores an unknown one', () => {
+    vi.stubGlobal('window', { location: { href: 'http://localhost/?share=shared', search: '', hash: '' } })
+    try {
+      const known = bench({
+        sessions: sessionState([summary('shared')]),
+        workspaces: workspaceState([workspace('a', [sid('shared')])]),
+      })
+      expect(known.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('shared'), { source: 'mainView' })
+      const unknown = bench({ sessions: sessionState([]), workspaces: workspaceState() })
+      expect(unknown.sessions.retain).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('reclaims the saved blank before opening history, even when another blank is listed first', async () => {

@@ -908,6 +908,104 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
 </div>
 `;
 
+exports[`sidebar shell snapshots > renders the templated home without brand, deployments, or settings entry > modellaunch home expanded 1`] = `
+<div
+  data-slot="sidebar"
+  style="display: contents;"
+>
+  <div
+    class="root quietBars"
+    style="width: 300px;"
+  >
+    <div
+      class="logoRow"
+      data-window-drag="true"
+    >
+      <button
+        aria-label="Collapse sidebar"
+        class="iconButton toggle"
+        data-sidebar-toggle="true"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="panelIcon"
+          data-content="d95b7908"
+          data-icon="dsw-icon-panel-left-outline-regular"
+          height="16"
+          width="16"
+        />
+      </button>
+    </div>
+    <button
+      aria-label="New session"
+      class="newSession"
+      type="button"
+    >
+      <span
+        class="newSessionLabelMask"
+      >
+        <span
+          class="newSessionContent"
+        >
+          <svg
+            aria-hidden="true"
+            data-content="532cf99a"
+            data-icon="dsw-icon-new-chat-outline-medium"
+            height="14"
+            width="14"
+          />
+          <span
+            class="newSessionLabel wide"
+          >
+            New Session
+          </span>
+        </span>
+      </span>
+    </button>
+    <div
+      class="scrollRegion"
+    >
+      <div
+        class="scrollArea"
+        data-sidebar-scrollport=""
+      >
+        <div
+          class="regionArea"
+        >
+          <div
+            data-slot="sidebar.workspaces"
+            style="display: contents;"
+          />
+        </div>
+      </div>
+      <span
+        aria-hidden="true"
+        class="scrollFade"
+      />
+    </div>
+    <div
+      class="footArea"
+    >
+      <div
+        class="deployments"
+      />
+      <div
+        class="footerActions"
+      >
+        <div
+          data-slot="sidebar.footer.action"
+          style="display: contents;"
+        />
+      </div>
+      <div
+        class="settingsArea"
+      />
+    </div>
+  </div>
+</div>
+`;
+
 exports[`sidebar shell snapshots > renders the templated rail without the brand mark > modellaunch collapsed 1`] = `
 <div
   data-slot="sidebar"

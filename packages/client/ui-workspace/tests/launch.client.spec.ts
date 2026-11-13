@@ -12,15 +12,18 @@ describe('readWorkspaceLaunch', () => {
       .toEqual({ groupId: 'custom:2', template: undefined })
   })
 
-  it('reads a recognized template only together with a group', () => {
+  it('reads a recognized template with or without a group', () => {
     expect(readWorkspaceLaunch('?group=custom:2&template=modellaunch'))
       .toEqual({ groupId: 'custom:2', template: 'modellaunch' })
     expect(readWorkspaceLaunch('?group=custom:2&template=other'))
       .toEqual({ groupId: 'custom:2', template: undefined })
-    expect(readWorkspaceLaunch('?template=modellaunch')).toEqual(NO_WORKSPACE_LAUNCH)
+    expect(readWorkspaceLaunch('?template=modellaunch'))
+      .toEqual({ groupId: undefined, template: 'modellaunch' })
+    expect(readWorkspaceLaunch('?template=other')).toEqual(NO_WORKSPACE_LAUNCH)
   })
 
   it('ignores an empty group', () => {
-    expect(readWorkspaceLaunch('?group=&template=modellaunch')).toEqual(NO_WORKSPACE_LAUNCH)
+    expect(readWorkspaceLaunch('?group=&template=modellaunch'))
+      .toEqual({ groupId: undefined, template: 'modellaunch' })
   })
 })

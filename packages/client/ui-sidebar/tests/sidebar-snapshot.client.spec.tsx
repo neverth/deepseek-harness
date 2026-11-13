@@ -116,6 +116,15 @@ describe('sidebar shell snapshots', () => {
     await runtime.dispose()
   })
 
+  it('renders the templated home without brand, deployments, or settings entry', async () => {
+    const { runtime } = await bench({ locale: 'en', launch: { groupId: undefined, template: 'modellaunch' } })
+    const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300, drawer: false })
+    expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(1)
+    expect(slot.view.queryByText('3080')).toBeNull()
+    expect(slot.container).toMatchSnapshot('modellaunch home expanded')
+    await runtime.dispose()
+  })
+
   it('renders the templated rail without the brand mark', async () => {
     const { runtime } = await bench({ locale: 'en', launch: { groupId: 'custom:2', template: 'modellaunch' } })
     const slot = runtime.renderSlot('sidebar', { collapsed: true, width: 56, drawer: false })

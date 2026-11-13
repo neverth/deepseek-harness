@@ -187,10 +187,11 @@ export function SidebarRoot({
   renderFactorySlot,
 }: SidebarRootComponentProps) {
   const panels = usePanels(snapshot => snapshot)
-  // A templated launch is a dedicated view of one hand-made group: the panel
-  // launchers, deployment switch, and settings entry would offer navigation
-  // out of it, so the shell drops them.
-  const templateMode = launch?.template === 'modellaunch' && launch.groupId !== undefined
+  // A templated launch is a dedicated view of one hand-made group, or the
+  // model-launch home when the URL names no group: the panel launchers,
+  // deployment switch, and settings entry would offer navigation out of it, so
+  // the shell drops them.
+  const templateMode = launch?.template === 'modellaunch'
   const unpinned = useEntryPins(ids => ids)
   const activePanelId = usePanelInfo(info => info.activePanelId)
   const hasEntryActions = useEntryActions(registered => registered)
