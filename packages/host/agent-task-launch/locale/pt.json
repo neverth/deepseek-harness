@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Iniciador de tarefas",
+    "description": "Inicia uma tarefa de lançamento de modelo com um único POST na LAN: cria o grupo, sua primeira sessão e o prompt."
+  }
+}

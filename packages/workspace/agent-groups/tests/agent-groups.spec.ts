@@ -43,6 +43,45 @@ function group(id: string, name: string, sessionIds: string[], dirName?: string,
 }
 
 describe('AgentGroupRegistry', () => {
+  it('creates a group with the next custom id and reuses the same name', async () => {
+    const { registry, changes } = await harness()
+    await registry.replace([group('custom:3', 'Release', ['s1'])])
+    const created = await registry.ensure('Docs')
+    expect(created).toEqual(group('custom:4', 'Docs', []))
+    expect(changes).toHaveLength(2)
+    await expect(registry.ensure('Docs')).resolves.toEqual(created)
+    expect(changes).toHaveLength(2)
+    expect(registry.findByName('Release')).toEqual(group('custom:3', 'Release', ['s1']))
+    expect(registry.findByName('Missing')).toBeUndefined()
+    expect(registry.list()).toEqual([group('custom:3', 'Release', ['s1']), group('custom:4', 'Docs', [])])
+  })
+
+  it('creates the first custom group on an empty registry and ignores foreign ids', async () => {
+    const { registry } = await harness()
+    await expect(registry.ensure('Release')).resolves.toEqual(group('custom:1', 'Release', []))
+    await registry.replace([group('foreign-id', 'Imported', ['s1'])])
+    await expect(registry.ensure('Docs')).resolves.toEqual(group('custom:1', 'Docs', []))
+  })
+
+  it('appends one Session to a group and refuses unknown groups or cross-group membership', async () => {
+    const { registry, changes } = await harness()
+    await registry.replace([group('custom:1', 'Release', ['s1']), group('custom:2', 'Docs', [])])
+    await expect(registry.addSession('custom:2', SessionId('s2')))
+      .resolves.toEqual(group('custom:2', 'Docs', ['s2']))
+    expect(changes).toHaveLength(2)
+    await expect(registry.addSession('custom:2', SessionId('s2')))
+      .resolves.toEqual(group('custom:2', 'Docs', ['s2']))
+    expect(changes).toHaveLength(2)
+    await expect(registry.addSession('custom:missing', SessionId('s3')))
+      .rejects.toThrow(/unknown group id/)
+    await expect(registry.addSession('custom:2', SessionId('s1')))
+      .rejects.toThrow(/appears in groups/)
+    expect(registry.list()).toEqual([
+      group('custom:1', 'Release', ['s1']),
+      group('custom:2', 'Docs', ['s2']),
+    ])
+  })
+
   it('starts empty and answers the group a Session belongs to', async () => {
     const { registry } = await harness()
     expect(registry.list()).toEqual([])
@@ -148,6 +187,17 @@ describe('AgentGroupRegistry', () => {
 
     await expect(registry.replace([group('custom:1', 'Release renamed', ['s1'])]))
       .resolves.toEqual([group('custom:1', 'Release renamed', ['s1'], undefined, boardUrl)])
+  })
+
+  it('keeps the assigned directory name when a board URL changes beside another group', async () => {
+    const { registry } = await harness()
+    await registry.replace([group('custom:1', 'Release', ['s1']), group('custom:2', 'Docs', ['s2'])])
+    await registry.setDirectoryName('custom:1', '2611110036-Release-a1b2c3')
+    await registry.setBoardUrl('custom:1', 'https://boards.example/qa')
+    expect(registry.list()).toEqual([
+      group('custom:1', 'Release', ['s1'], '2611110036-Release-a1b2c3', 'https://boards.example/qa'),
+      group('custom:2', 'Docs', ['s2']),
+    ])
   })
 
   it('reloads the board URL from the same medium', async () => {

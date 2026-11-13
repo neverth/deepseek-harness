@@ -237,6 +237,18 @@ describe('connection node half', () => {
     }
   })
 
+  it('separates the Host/Origin fence from credential admission', async () => {
+    const { connection, dispose } = await mounted()
+    try {
+      expect(connection.isTrustedRequest(fakeRequest({ host: '127.0.0.1:3080' }))).toBe(true)
+      expect(connection.isTrustedRequest(fakeRequest({ host: 'evil.example' }))).toBe(false)
+      // The same fence-passing request still lacks a credential.
+      expect(connection.requestRejection(fakeRequest({ host: '127.0.0.1:3080' }))).toBe(401)
+    } finally {
+      await dispose()
+    }
+  })
+
   it('uses the TLS default port for markerless exact-authority grants', async () => {
     const { connection, dispose } = await mounted({ trustedHosts: ['tls.example:443', 'plain.example:80'] }, 'https:')
     try {

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Lanceur de tâches",
+    "description": "Démarre une tâche de lancement de modèle en un seul POST sur le LAN : crée le groupe, sa première session et le prompt."
+  }
+}

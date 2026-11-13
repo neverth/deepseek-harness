@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Task launcher",
+    "description": "Starts a model-launch task from one LAN POST: creates the group, its first Session, and the prompt."
+  }
+}

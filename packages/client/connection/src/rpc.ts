@@ -233,6 +233,15 @@ export interface HostConnectionHandle {
   requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection
 
   /**
+   * Whether a request passes the Host/Origin trust fence, without checking a
+   * credential. Routes the caller admits on its own terms use this instead of
+   * {@link requestRejection}.
+   * @param request - request headers carrying Host and Origin.
+   * @returns true when the authority belongs to this deployment.
+   */
+  isTrustedRequest(request: ConnectionTrustRequest): boolean
+
+  /**
    * Admit an HTTP request against its signed browser or API credential and live Peer.
    * @param request - request headers from the HTTP or upgrade request.
    * @returns the credential's Peer, or the rejection status.

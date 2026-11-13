@@ -127,6 +127,11 @@ export class HostConnectionService extends Service implements HostConnectionHand
     return 'rejection' in admission ? admission.rejection : undefined
   }
 
+  /** Apply only the Host/Origin fence, keeping credential checks with the route. */
+  isTrustedRequest(request: ConnectionTrustRequest): boolean {
+    return this.isTrusted(request)
+  }
+
   /** Browser requests share an owner Peer; API HTTP does not depend on an attached socket. */
   admit(request: ConnectionTrustRequest): PeerAdmission {
     if (!this.isTrusted(request)) return { rejection: 403 }

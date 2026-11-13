@@ -48,6 +48,41 @@ function sameGroups(left: readonly AgentGroupRecord[], right: readonly AgentGrou
 }
 
 /**
+ * Reject a document that repeats a group id or places one Session in two groups.
+ * @param groups - parsed groups about to be stored.
+ * @throws Error naming the duplicated group id or Session.
+ */
+function assertUniqueGroups(groups: readonly AgentGroupRecord[]): void {
+  const groupIds = new Set<string>()
+  const sessionOwners = new Map<string, string>()
+  for (const group of groups) {
+    if (groupIds.has(group.id)) throw new Error(`agent groups: duplicate group id '${group.id}'`)
+    groupIds.add(group.id)
+    for (const sessionId of group.sessionIds) {
+      const owner = sessionOwners.get(sessionId)
+      if (owner !== undefined) {
+        throw new Error(`agent groups: session '${sessionId}' appears in groups '${owner}' and '${group.id}'`)
+      }
+      sessionOwners.set(sessionId, group.id)
+    }
+  }
+}
+
+/**
+ * Allocate the next browser-compatible group id from the stored document.
+ * @param groups - current stored groups.
+ * @returns the lowest unused `custom:<n>` id after the highest one in use.
+ */
+function nextCustomGroupId(groups: readonly AgentGroupRecord[]): string {
+  let highest = 0
+  for (const group of groups) {
+    const match = /^custom:(\d+)$/u.exec(group.id)
+    if (match !== null) highest = Math.max(highest, Number(match[1]))
+  }
+  return `custom:${String(highest + 1)}`
+}
+
+/**
  * Durable registry of hand-made sidebar groups. The newest browser push
  * replaces the complete document; each session belongs to at most one group,
  * so a lookup answers the one group a calling session shares with its peers.
@@ -90,6 +125,61 @@ export class AgentGroupRegistry extends Service {
   }
 
   /**
+   * Find the stored group carrying one exact user-visible name.
+   * @param name - group name to match.
+   * @returns the first group with that name, or `undefined`.
+   */
+  findByName(name: string): AgentGroupRecord | undefined {
+    return this.requireGlobal().get().groups.find(group => group.name === name)
+  }
+
+  /**
+   * Return the stored group with that name, creating an empty one when absent.
+   * The id is the lowest unused `custom:<n>` after the highest id in use, so a
+   * link built from it opens in the browser's hand-made group surface.
+   * @param name - user-visible group name; the caller validates it.
+   * @returns the existing or created group.
+   */
+  ensure(name: string): Promise<AgentGroupRecord> {
+    return this.serialize(async () => {
+      const global = this.requireGlobal()
+      const groups = global.get().groups
+      const existing = groups.find(group => group.name === name)
+      if (existing !== undefined) return existing
+      const created = agentGroupRecord.parse({ id: nextCustomGroupId(groups), name, sessionIds: [] })
+      const parsed = agentGroupsDomainState.parse({ groups: [...groups, created] }).groups
+      assertUniqueGroups(parsed)
+      await global.set({ groups: parsed })
+      return created
+    })
+  }
+
+  /**
+   * Append one Session to a group's membership. Repeating the same membership
+   * writes nothing.
+   * @param groupId - group receiving the Session.
+   * @param sessionId - Session to append after the current members.
+   * @returns the stored group after the membership is durable.
+   * @throws when no stored group carries that id, or the Session already belongs to another group.
+   */
+  addSession(groupId: string, sessionId: SessionId): Promise<AgentGroupRecord> {
+    return this.serialize(async () => {
+      const global = this.requireGlobal()
+      const groups = global.get().groups
+      const target = groups.find(group => group.id === groupId)
+      if (target === undefined) throw new Error(`agent groups: unknown group id '${groupId}'`)
+      if (target.sessionIds.includes(sessionId)) return target
+      const stored: AgentGroupRecord = { ...target, sessionIds: [...target.sessionIds, sessionId] }
+      const parsed = agentGroupsDomainState.parse({
+        groups: groups.map(group => group.id === groupId ? stored : group),
+      }).groups
+      assertUniqueGroups(parsed)
+      await global.set({ groups: parsed })
+      return stored
+    })
+  }
+
+  /**
    * Replace the complete group document from one browser push. A document
    * naming a duplicate group id or placing one Session in two groups is
    * rejected before any write. An unchanged document resolves without writing.
@@ -99,19 +189,7 @@ export class AgentGroupRegistry extends Service {
   replace(groups: readonly AgentGroupInput[]): Promise<readonly AgentGroupRecord[]> {
     return this.serialize(async () => {
       const parsed = agentGroupsDomainState.parse({ groups }).groups
-      const groupIds = new Set<string>()
-      const sessionOwners = new Map<string, string>()
-      for (const group of parsed) {
-        if (groupIds.has(group.id)) throw new Error(`agent groups: duplicate group id '${group.id}'`)
-        groupIds.add(group.id)
-        for (const sessionId of group.sessionIds) {
-          const owner = sessionOwners.get(sessionId)
-          if (owner !== undefined) {
-            throw new Error(`agent groups: session '${sessionId}' appears in groups '${owner}' and '${group.id}'`)
-          }
-          sessionOwners.set(sessionId, group.id)
-        }
-      }
+      assertUniqueGroups(parsed)
       const global = this.requireGlobal()
       // Browsers push only the editable fields, so a Host-assigned directory
       // name and a tool-written board URL survive every later push of the same

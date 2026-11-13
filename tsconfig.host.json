@@ -584,6 +584,7 @@
     { "path": "./packages/host/directory-picker-browse" },
     { "path": "./packages/host/directory-picker-native" },
     { "path": "./packages/host/agent-group-board" },
+    { "path": "./packages/host/agent-task-launch" },
     { "path": "./packages/host/frontend-static" },
     { "path": "./packages/host/open-in-app" },
     { "path": "./packages/host/plugin-inventory" },

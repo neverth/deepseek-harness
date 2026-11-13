@@ -103,6 +103,13 @@
     - id: agent-group-board
       name: '@deepseek-ai/dsh-host-agent-group-board'
 
+    # LAN task launcher: one POST creates a hand-made group, starts its first
+    # Session from the prompt with the requested model, reasoning effort, and
+    # Team mode, and answers the group link. The route is trusted by network
+    # reachability; its Host still passes the connection trust fence.
+    - id: agent-task-launch
+      name: '@deepseek-ai/dsh-host-agent-task-launch'
+
     - id: session-reference
       name: '@deepseek-ai/dsh-session-reference'
 
