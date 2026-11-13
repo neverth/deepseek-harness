@@ -243,6 +243,9 @@ export class ConversationController extends Service implements IConversation {
     if (attachments.length !== attachmentIds.length) {
       throw new Error('conversation.sendSession: one or more draft attachments are no longer available')
     }
+    // Host-side reads for this turn must see whatever a plugin prepares now:
+    // the prompt is admitted only after every listener finished.
+    await this.ctx.waterfall('conversation/before-submit', { sessionId: session.sessionId }, async () => {})
     const uploads = this.fileUploads.getSnapshot()
     const uploadFor = (attachment: ComposerAttachment): Extract<DraftFileUpload, { status: 'ready' }> => {
       const upload = uploads[attachment.id]

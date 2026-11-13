@@ -21,6 +21,20 @@ const SNAPSHOT_INTERVAL_MS = 5 * 60_000
 const GROUPS_DEBOUNCE_MS = 1_000
 
 /**
+ * Read the hand-made groups of one view store as the Host document.
+ * @param view - the browser's single view-store instance.
+ * @returns groups in display order with their members.
+ */
+export function agentGroupDocument(view: WorkspaceViewInstance): AgentGroupView[] {
+  const state = view.getSnapshot()
+  return state.customGroups.map(group => ({
+    id: group.id,
+    name: group.name,
+    sessionIds: (state.customMembers[group.id] ?? []).map(sessionId => SessionId(sessionId)),
+  }))
+}
+
+/**
  * Push this browser's view document and hand-made groups to the Host.
  * @param workspaces - Client Workspace service carrying the snapshot Remote methods.
  * @param view - the browser's single view-store instance.
@@ -39,14 +53,7 @@ export function mirrorViewSnapshots(
   let groupTimer: ReturnType<typeof setTimeout> | undefined
   let pending: Promise<void> = Promise.resolve()
 
-  const groupDocument = (): AgentGroupView[] => {
-    const state = view.getSnapshot()
-    return state.customGroups.map(group => ({
-      id: group.id,
-      name: group.name,
-      sessionIds: (state.customMembers[group.id] ?? []).map(sessionId => SessionId(sessionId)),
-    }))
-  }
+  const groupDocument = (): AgentGroupView[] => agentGroupDocument(view)
 
   const pushGroups = (): void => {
     const groups = groupDocument()

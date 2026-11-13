@@ -719,6 +719,25 @@ describe('Conversation inject API', () => {
     await b.runtime.dispose()
   })
 
+  it('waits for before-submit preparation before admitting the prompt', async () => {
+    const b = await bench()
+    const order: string[] = []
+    b.runtime.ctx.on('conversation/before-submit', async (request, next) => {
+      order.push(`prepare:${request.sessionId}`)
+      await next()
+    })
+    b.sessionFake.prompt.mockImplementation(async () => {
+      order.push('prompt')
+      return { ok: true, value: { accepted: true } }
+    })
+    const { actions } = b.inputApi(ROOT)
+    actions.setDraft('task')
+    actions.submit()
+    await vi.waitFor(() => { expect(b.sessionFake.prompt).toHaveBeenCalledOnce() })
+    expect(order).toEqual([`prepare:${ROOT}`, 'prompt'])
+    await b.runtime.dispose()
+  })
+
   it('leaves a draft whose message is still being sent with its Session', async () => {
     const b = await bench()
     const pending = Promise.withResolvers<Awaited<ReturnType<ISession['prompt']>>>()

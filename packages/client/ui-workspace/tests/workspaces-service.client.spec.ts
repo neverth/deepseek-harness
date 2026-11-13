@@ -8,7 +8,7 @@ import type {
 import { SessionCreateError } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type {
-  IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
+  AgentGroupView, IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ClientRemote, DirectoryListing } from '@deepseek-ai/dsh-api-remotes/client'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
@@ -202,7 +202,9 @@ class FakeWorkspaces implements IWorkspaces {
   declare readonly insertSessionBefore: IWorkspaces['insertSessionBefore']
   declare readonly saveViewSnapshot: IWorkspaces['saveViewSnapshot']
   declare readonly listGroups: IWorkspaces['listGroups']
-  declare readonly saveGroups: IWorkspaces['saveGroups']
+  /** Complete group documents this service pushed to the Host. */
+  readonly savedGroups: (readonly AgentGroupView[])[] = []
+  onSaveGroups: IWorkspaces['saveGroups'] = async (groups) => { this.savedGroups.push(groups) }
   readonly pinCalls: SessionId[] = []
   readonly unpinCalls: SessionId[] = []
   onPin: IWorkspaces['pinSession'] = async (sessionId) => {
@@ -237,6 +239,10 @@ class FakeWorkspaces implements IWorkspaces {
       ...state,
       pinnedSessionIds: state.pinnedSessionIds.filter(id => id !== sessionId),
     }))
+  }
+
+  saveGroups(groups: readonly AgentGroupView[]): Promise<void> {
+    return this.onSaveGroups(groups)
   }
 }
 
@@ -284,6 +290,10 @@ interface BenchOptions {
   readonly configureView?: (view: WorkspaceViewInstance) => void
   /** Page-URL launch options; ordinary pages leave them unset. */
   readonly launch?: WorkspaceLaunch
+  /** Page reload the launched task's first acceptance asks for. */
+  readonly reload?: () => void
+  /** Clock used for the launched task's group name. */
+  readonly now?: () => Date
 }
 
 function bench(options: BenchOptions = {}) {
@@ -319,6 +329,8 @@ function bench(options: BenchOptions = {}) {
     view,
     notify,
     options.launch ?? NO_WORKSPACE_LAUNCH,
+    options.reload ?? (() => {}),
+    options.now ?? (() => new Date()),
   )
   return { ctx, directoryPicker, sessions, uiWorkspace, workspaces, layout, selectPanel, view, notify, requestDraftInitialization }
 }
@@ -387,6 +399,62 @@ describe('UiWorkspaceService', () => {
       expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('created-ark_all'), { source: 'mainView' })
     })
     expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('ark_all') })
+  })
+
+  it('prepares the launched task group before its first prompt reaches the Host', async () => {
+    const reload = vi.fn()
+    const replaceState = vi.fn()
+    vi.stubGlobal('window', {
+      location: { href: 'http://localhost/?template=modellaunch', hash: '' },
+      history: { state: null, replaceState },
+    })
+    const b = bench({
+      sessions: sessionState([summary('task', { blank: true, cwd: '/w/a' })]),
+      workspaces: workspaceState([workspace('a', [sid('task')])]),
+      launch: { groupId: undefined, template: 'modellaunch' },
+      reload,
+      now: () => new Date(2026, 10, 13, 22, 0),
+    })
+    await vi.waitFor(() => {
+      expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('task'), { source: 'mainView' })
+    })
+    await b.ctx.waterfall('conversation/before-submit', { sessionId: sid('task') }, async () => {})
+
+    const state = b.view.getSnapshot()
+    expect(state.customGroups).toEqual([{ id: 'custom:1', name: 'Model launch test-2611132200' }])
+    expect(state.customMembers['custom:1']).toEqual([sid('task')])
+    expect(b.workspaces.savedGroups.at(-1)).toEqual([
+      { id: 'custom:1', name: 'Model launch test-2611132200', sessionIds: [sid('task')] },
+    ])
+    // The page reopens only after the Host accepts the prompt.
+    expect(reload).not.toHaveBeenCalled()
+
+    b.sessions.list.update(current => ({
+      ...current,
+      byId: {
+        ...current.byId,
+        [sid('task')]: { ...current.byId[sid('task')]!, blank: false },
+      },
+    }))
+    expect(reload).toHaveBeenCalledOnce()
+    const target = replaceState.mock.calls[0]?.[2] as string
+    const url = new URL(target, 'http://localhost')
+    expect(url.searchParams.get('group')).toBe('custom:1')
+    expect(url.searchParams.get('template')).toBe('modellaunch')
+  })
+
+  it('leaves a prompt from another Session outside the launched task group', async () => {
+    const b = bench({
+      sessions: sessionState([summary('task', { blank: true, cwd: '/w/a' })]),
+      workspaces: workspaceState([workspace('a', [sid('task')])]),
+      launch: { groupId: undefined, template: 'modellaunch' },
+    })
+    await vi.waitFor(() => {
+      expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('task'), { source: 'mainView' })
+    })
+    await b.ctx.waterfall('conversation/before-submit', { sessionId: sid('other') }, async () => {})
+    expect(b.view.getSnapshot().customGroups).toEqual([])
+    expect(b.workspaces.savedGroups).toEqual([])
   })
 
   it('adds a Session started from a templated launch to the launched group', async () => {

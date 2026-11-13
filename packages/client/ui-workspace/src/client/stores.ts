@@ -50,6 +50,16 @@ type WorkspaceViewState = {
 /** Prefix that keeps a hand-made group id out of the Workspace id namespace. */
 const CUSTOM_GROUP_PREFIX = 'custom:'
 
+/**
+ * The id the next hand-made group takes, so a caller can address the group it
+ * is about to create without waiting for the store write.
+ * @param seq - current `customGroupSeq` of the view state.
+ * @returns the id `createCustomGroup` assigns next.
+ */
+export function nextCustomGroupId(seq: number): string {
+  return `${CUSTOM_GROUP_PREFIX}${seq + 1}`
+}
+
 type SessionOrderSource = {
   members: Readonly<Record<string, readonly SessionId[]>>
   summaries: SessionListState['byId']
@@ -203,7 +213,7 @@ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState
       },
       setArchivedFilter: (d, filter: ArchivedFilter) => { d.archivedFilter = filter },
       createCustomGroup: (d, name) => {
-        const id = `${CUSTOM_GROUP_PREFIX}${d.customGroupSeq + 1}`
+        const id = nextCustomGroupId(d.customGroupSeq)
         d.customGroupSeq += 1
         d.customGroups.push({ id, name })
         d.customMembers[id] = []

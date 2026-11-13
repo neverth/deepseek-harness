@@ -21,11 +21,12 @@ import type {
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type { DraftInitializationOptions } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { BeforeSubmitRequest, DraftInitializationOptions } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { RowToast } from './contract/slots.ts'
 import type { WorkspaceLaunch } from './launch.ts'
 import { pinOrderAccounts, pinOrderSource } from './pin-order.ts'
-import type { WorkspaceViewInstance } from './stores.ts'
+import { nextCustomGroupId, type WorkspaceViewInstance } from './stores.ts'
+import { agentGroupDocument } from './view-host.ts'
 
 interface MainSelection {
   readonly sessionId?: SessionId
@@ -179,6 +180,8 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   )
   private mainReference: SessionReference | undefined
   private restorationNavigation: AbortSignal | undefined
+  /** Group prepared for the templated home's task, fixed at its first send. */
+  private launchedTask: { readonly sessionId: SessionId; readonly groupId: string } | undefined
 
   /**
    * @param ctx - Client root Context.
@@ -189,6 +192,8 @@ class UiWorkspaceService extends Service implements UiWorkspace {
    * names the launched group's members.
    * @param notify - show one notice through the Workspace notice channel.
    * @param launch - group and template named by the page URL.
+   * @param reloadPage - reload the page so it reads the updated launch URL.
+   * @param now - clock for the generated task-group name.
    */
   constructor(
     ctx: Context,
@@ -198,12 +203,18 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     private readonly view: WorkspaceViewInstance,
     private readonly notify: (toast: RowToast) => void,
     readonly launch: WorkspaceLaunch,
+    private readonly reloadPage: () => void = () => { window.location.reload() },
+    private readonly now: () => Date = () => new Date(),
   ) {
     super(ctx, 'uiWorkspace')
     ctx.effect(() => {
       const stop = this.watchNavigation()
       const stopLaunch = this.focusLaunchedGroup()
+      const stopTask = this.watchLaunchedTask()
+      const stopSubmit = ctx.on('conversation/before-submit', (request, next) => this.beforeSubmit(request, next))
       return () => {
+        stopSubmit()
+        stopTask()
         stopLaunch()
         stop()
         this.lifetime.abort()
@@ -382,10 +393,73 @@ class UiWorkspaceService extends Service implements UiWorkspace {
 
   /** Add a Session created from a templated launch to the group the URL names. */
   private assignLaunchGroup(sessionId: SessionId): void {
-    const groupId = this.launch.groupId
+    const groupId = this.launchedTask?.groupId ?? this.launch.groupId
     if (groupId === undefined || this.launch.template === undefined) return
     if (!this.view.getSnapshot().customGroups.some(group => group.id === groupId)) return
     this.view.actions.moveCustomMember(sessionId, groupId)
+  }
+
+  /**
+   * Prepare the launched task's group before its prompt leaves the browser:
+   * the Host assembles the turn from its own group document, so a group
+   * created after the send would miss the first turn.
+   * @param request - the draft's target Session.
+   * @param next - continues the send.
+   */
+  private async beforeSubmit(request: BeforeSubmitRequest, next: () => Promise<void>): Promise<void> {
+    await this.prepareLaunchedTask(request.sessionId)
+    await next()
+  }
+
+  /**
+   * Create the group the templated home's task belongs to and hand it to the
+   * Host. A failed push keeps the message sendable: the group already exists
+   * in this browser, and the next send retries the Host document.
+   * @param sessionId - Session about to receive its first prompt.
+   */
+  private async prepareLaunchedTask(sessionId: SessionId): Promise<void> {
+    if (this.launch.template !== 'modellaunch' || this.launch.groupId !== undefined) return
+    if (sessionId !== this.mainReference?.sessionId) return
+    const prepared = this.launchedTask
+    if (prepared !== undefined && prepared.sessionId !== sessionId) return
+    if (prepared === undefined) {
+      const stamp = launchGroupStamp(this.now())
+      const name = this.ctx.locale.bind('workspace')('group.launchName', { stamp })
+      const groupId = nextCustomGroupId(this.view.getSnapshot().customGroupSeq)
+      this.view.actions.createCustomGroup(name)
+      this.view.actions.moveCustomMember(sessionId, groupId)
+      this.launchedTask = { sessionId, groupId }
+    }
+    try {
+      await this.workspaces.saveGroups(agentGroupDocument(this.view))
+    } catch (reason: unknown) {
+      console.error('[ui-workspace] saving the launched task group failed:', reason)
+    }
+  }
+
+  /**
+   * Reopen the page as the prepared task's group link once its first prompt is
+   * accepted, so the group membership is visible in every surface.
+   * @returns the subscription stopping a pending reopen.
+   */
+  private watchLaunchedTask(): () => void {
+    let stopped = false
+    let stop = (): void => {}
+    const attempt = (): void => {
+      const launched = this.launchedTask
+      if (stopped || launched === undefined) return
+      const summary = this.sessions.list.getSnapshot().byId[launched.sessionId]
+      if (summary === undefined || summary.blank) return
+      stopped = true
+      stop()
+      adoptLaunchedGroupUrl(launched.groupId)
+      this.reloadPage()
+    }
+    stop = this.sessions.list.subscribe(attempt)
+    return () => {
+      stopped = true
+      stop()
+    }
   }
 
   /**
@@ -662,6 +736,29 @@ function creationFailureMessage(error: unknown): string {
 
 /** The Workspace the model-launch home opens, when the Host has one by this title. */
 const MODEL_LAUNCH_WORKSPACE_TITLE = 'ark_all'
+
+/**
+ * Local `YYMMDDHHmm` stamp of one instant, matching generated group directory
+ * names.
+ * @param now - instant to format.
+ * @returns the ten-digit stamp.
+ */
+function launchGroupStamp(now: Date): string {
+  return [now.getFullYear() % 100, now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes()]
+    .map(part => String(part).padStart(2, '0'))
+    .join('')
+}
+
+/**
+ * Point this page's URL at the prepared task's group, keeping every other
+ * launch parameter.
+ * @param groupId - group the templated task joined.
+ */
+function adoptLaunchedGroupUrl(groupId: string): void {
+  const url = new URL(window.location.href)
+  url.searchParams.set('group', groupId)
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+}
 
 /** The model-launch Workspace, so the templated home does not depend on recency. */
 function launchHomeWorkspace(workspaces: readonly WorkspaceView[]): WorkspaceId | undefined {

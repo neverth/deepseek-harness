@@ -8,6 +8,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { InboxState } from '@deepseek-ai/dsh-agent/types'
 import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { Branded } from '@deepseek-ai/dsh-brand'
@@ -33,6 +34,12 @@ export interface DraftAttachmentSerializationResult {
 export interface SubmitOutcome {
   readonly kind: 'success' | 'error'
   readonly text?: string
+}
+
+/** One draft about to become a prompt. */
+export interface BeforeSubmitRequest {
+  /** Session that receives the prompt. */
+  readonly sessionId: SessionId
 }
 
 /** Command-mode credential supplied by one input-trigger source. */
@@ -138,6 +145,15 @@ export interface InputTriggerController {
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
+    /**
+     * Prepare Host state the prompt admission reads for this turn. The send
+     * waits for every listener before the prompt leaves the browser; a
+     * listener rejects only when the draft must not be sent.
+     * @param request - the Session and its outgoing prompt.
+     * @param next - delegate to the next listener and then the send.
+     * @mode waterfall
+     */
+    'conversation/before-submit'(request: BeforeSubmitRequest, next: () => Promise<void>): Promise<void>
     /**
      * Claim a command token for the scoped input machine.
      * @param request - command claim and span.
