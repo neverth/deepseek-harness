@@ -423,6 +423,10 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const prepared = this.launchedTask
     if (prepared !== undefined && prepared.sessionId !== sessionId) return
     if (prepared === undefined) {
+      // A browser opened for the first time holds no group document; pushing
+      // one that only names this task's group would erase the Host groups the
+      // other Sessions already share.
+      if (!await this.mergeHostGroups()) return
       const stamp = launchGroupStamp(this.now())
       const name = this.ctx.locale.bind('workspace')('group.launchName', { stamp })
       const groupId = nextCustomGroupId(this.view.getSnapshot().customGroupSeq)
@@ -434,6 +438,22 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       await this.workspaces.saveGroups(agentGroupDocument(this.view))
     } catch (reason: unknown) {
       console.error('[ui-workspace] saving the launched task group failed:', reason)
+    }
+  }
+
+  /**
+   * Merge the Host's group document into this browser before replacing it.
+   * @returns whether the Host document was read; a failed read keeps the
+   * caller from pushing a document that could drop groups it never saw.
+   */
+  private async mergeHostGroups(): Promise<boolean> {
+    try {
+      const groups = await this.workspaces.listGroups()
+      if (groups.length > 0) this.view.actions.adoptHostGroups(groups)
+      return true
+    } catch (reason: unknown) {
+      console.error('[ui-workspace] reading the Host group document failed:', reason)
+      return false
     }
   }
 

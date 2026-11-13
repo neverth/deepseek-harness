@@ -201,7 +201,8 @@ class FakeWorkspaces implements IWorkspaces {
   declare readonly insertBefore: IWorkspaces['insertBefore']
   declare readonly insertSessionBefore: IWorkspaces['insertSessionBefore']
   declare readonly saveViewSnapshot: IWorkspaces['saveViewSnapshot']
-  declare readonly listGroups: IWorkspaces['listGroups']
+  /** Group document the Host already holds (what a fresh browser merges). */
+  hostGroups: readonly AgentGroupView[] = []
   /** Complete group documents this service pushed to the Host. */
   readonly savedGroups: (readonly AgentGroupView[])[] = []
   onSaveGroups: IWorkspaces['saveGroups'] = async (groups) => { this.savedGroups.push(groups) }
@@ -243,6 +244,10 @@ class FakeWorkspaces implements IWorkspaces {
 
   saveGroups(groups: readonly AgentGroupView[]): Promise<void> {
     return this.onSaveGroups(groups)
+  }
+
+  listGroups(): Promise<readonly AgentGroupView[]> {
+    return Promise.resolve(this.hostGroups)
   }
 }
 
@@ -441,6 +446,32 @@ describe('UiWorkspaceService', () => {
     const url = new URL(target, 'http://localhost')
     expect(url.searchParams.get('group')).toBe('custom:1')
     expect(url.searchParams.get('template')).toBe('modellaunch')
+  })
+
+  it('merges the Host group document before the first task group replaces it', async () => {
+    vi.stubGlobal('window', {
+      location: { href: 'http://localhost/?template=modellaunch', hash: '' },
+      history: { state: null, replaceState: vi.fn() },
+    })
+    const b = bench({
+      sessions: sessionState([summary('task', { blank: true, cwd: '/w/a' })]),
+      workspaces: workspaceState([workspace('a', [sid('task')])]),
+      launch: { groupId: undefined, template: 'modellaunch' },
+      reload: () => {},
+      now: () => new Date(2026, 10, 13, 22, 0),
+    })
+    b.workspaces.hostGroups = [{ id: 'custom:1', name: 'Existing', sessionIds: [sid('older')] }]
+    await vi.waitFor(() => {
+      expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('task'), { source: 'mainView' })
+    })
+    await b.ctx.waterfall('conversation/before-submit', { sessionId: sid('task') }, async () => {})
+
+    const state = b.view.getSnapshot()
+    expect(state.customGroups.map(group => group.id)).toEqual(['custom:1', 'custom:2'])
+    expect(b.workspaces.savedGroups.at(-1)).toEqual([
+      { id: 'custom:1', name: 'Existing', sessionIds: [sid('older')] },
+      { id: 'custom:2', name: 'Model launch test-2611132200', sessionIds: [sid('task')] },
+    ])
   })
 
   it('leaves a prompt from another Session outside the launched task group', async () => {
