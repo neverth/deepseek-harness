@@ -1868,6 +1868,10 @@ export function WorkspaceBrowser({
       console.warn('session unarchive rejected:', reason)
     })
   }
+  // A templated home without a group is a launch surface: stored Sessions stay
+  // out of the page so every task starts from New Session, while a group link
+  // keeps listing only the group it names.
+  if (templateMode && launch?.groupId === undefined) return null
   return (
     <div className={clsx(css.root, !wide && css.rail)}>
       <div className={clsx(css.sectionHeader, wide && searchSpacingMotionEnabled && css.searchSpacingMotion)} data-sidebar-workspace-header="">

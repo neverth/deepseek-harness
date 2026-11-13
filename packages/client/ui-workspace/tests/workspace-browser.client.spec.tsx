@@ -698,6 +698,33 @@ describe('WorkspaceBrowser', () => {
     expect(screen.getByText('stored')).toBeTruthy()
   })
 
+  it('hides stored sessions entirely on the templated home without a group', () => {
+    const b = mount({
+      launch: { groupId: undefined, template: 'modellaunch' },
+      useSessions: hook(sessionState([summary('stored-session', 3)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['stored-session'])])),
+    })
+    expect(b.view.container.querySelector('[role="treeitem"]')).toBeNull()
+    expect(screen.queryByText('stored-session')).toBeNull()
+    expect(screen.queryByText('Sessions')).toBeNull()
+    expect(screen.queryByRole('button', { name: '搜索会话' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '视图选项' })).toBeNull()
+  })
+
+  it('still lists only the named group on a templated group link', () => {
+    const b = mount({
+      launch: { groupId: 'custom:1', template: 'modellaunch' },
+      useSessions: hook(sessionState([summary('member', 3), summary('other', 2)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['member', 'other'])])),
+    })
+    act(() => {
+      b.store.actions.createCustomGroup('Launch')
+      b.store.actions.moveCustomMember('member', 'custom:1')
+    })
+    expect(screen.getByText('member')).toBeTruthy()
+    expect(screen.queryByText('other')).toBeNull()
+  })
+
   it('keeps Workspaces as siblings by default and restores the selected tree grouping', () => {
     const workspaces = hook(workspaceState([
       { ...workspace('root', [], 'Projects'), path: '/projects' },
