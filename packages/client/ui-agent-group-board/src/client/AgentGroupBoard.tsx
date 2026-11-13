@@ -55,6 +55,8 @@ export interface BoardRailProps {
   sessionId: SessionId | undefined
   /** Global Session-list selector hook supplied by the renderer. */
   useSessions: AgentGroupBoardProps['useSessions']
+  /** Page-URL launch options; the templated home carries no Session concept. */
+  launch: AgentGroupBoardInjected['launch']
   /** Read the Host group document. */
   loadGroups: AgentGroupBoardInjected['loadGroups']
   /** Open a board file in the native preview of the root Session's sidebar. */
@@ -103,12 +105,15 @@ function storeWidth(width: number): void {
  * @param props - the `conversation.left-rail` entry props.
  * @returns the board column, or null when no group board applies.
  */
-export function BoardRail({ sessionId, useSessions, loadGroups, openFile, t }: BoardRailProps) {
+export function BoardRail({ sessionId, useSessions, launch, loadGroups, openFile, t }: BoardRailProps) {
   const root = useSessions(state => sessionId === undefined ? undefined : rootSessionId(state.byId, sessionId))
   const [groups, setGroups] = useState<readonly AgentGroupView[] | null>(null)
   const loadGroupsRef = useRef(loadGroups)
   loadGroupsRef.current = loadGroups
-  const active = sessionId !== undefined
+  // The templated home launches tasks from a draft and exposes no stored
+  // Session, so a reused draft's group board has no place on that page.
+  const homeLaunch = launch.template === 'modellaunch' && launch.groupId === undefined
+  const active = sessionId !== undefined && !homeLaunch
 
   useEffect(() => {
     if (!active) return undefined
@@ -134,7 +139,7 @@ export function BoardRail({ sessionId, useSessions, loadGroups, openFile, t }: B
   }, [active])
 
   const group = boardGroupFor(groups ?? [], sessionId, root)
-  if (group === undefined || sessionId === undefined || root === undefined) return null
+  if (homeLaunch || group === undefined || sessionId === undefined || root === undefined) return null
   return <BoardPanel group={group} root={root} openFile={openFile} t={t} />
 }
 

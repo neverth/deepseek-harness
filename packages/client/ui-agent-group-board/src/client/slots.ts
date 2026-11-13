@@ -10,6 +10,13 @@ import type { BoardOpenFileRequest } from './open-file.ts'
 
 /** Injected business face of the board rail. */
 export interface AgentGroupBoardInjected {
+  /** Page-URL launch options; a templated home shows no board rail. */
+  readonly launch: {
+    /** Hand-made group named by `group=`; absent on ordinary pages. */
+    readonly groupId: string | undefined
+    /** UI template named by `template=`; absent on ordinary pages. */
+    readonly template: string | undefined
+  }
   /**
    * Read the Host's current hand-made group document.
    * @returns the stored groups, including each group's board URL when set.

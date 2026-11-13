@@ -14,6 +14,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the renderer-owned slots service.
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: pulls the Workspace UI navigation service merge (ctx.uiWorkspace).
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 // Type-only: pulls the ctx.sidebarRight service declaration.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 // Type-only: pulls the file resource navigation params (`line`).
@@ -28,7 +30,7 @@ export type { AgentGroupBoardInjected } from './slots.ts'
 export type { AgentGroupBoardKey } from './locales.ts'
 
 /** Services required by the board entry, its Host reads, its files, and its copy. */
-export const inject = ['slots', 'workspaces', 'locale', 'sessions', 'sidebarRight']
+export const inject = ['slots', 'workspaces', 'locale', 'sessions', 'sidebarRight', 'uiWorkspace']
 
 /**
  * Register the board column and its dictionaries.
@@ -43,6 +45,7 @@ export function apply(ctx: ClientContext): void {
     name: 'conversation.left-rail',
     locale: AGENT_GROUP_BOARD_NS,
     inject: () => ({
+      launch: ctx.uiWorkspace.launch,
       loadGroups: () => ctx.workspaces.listGroups(),
       openFile: (root, request) => {
         const cwd = ctx.sessions.list.getSnapshot().byId[root]?.cwd

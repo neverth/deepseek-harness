@@ -30,6 +30,7 @@ async function bench() {
   const listGroups = vi.fn(() => Promise.resolve(groups))
   const openResource = vi.fn()
   ctx.provide('workspaces', { listGroups } as never)
+  ctx.provide('uiWorkspace', { launch: { groupId: undefined, template: undefined } } as never)
   ctx.provide('sessions', {
     list: { getSnapshot: () => ({ byId: { 'session-root': { cwd: '/data/ws' } } }) },
     binding: () => undefined,

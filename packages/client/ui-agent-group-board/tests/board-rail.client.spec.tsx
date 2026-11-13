@@ -68,6 +68,7 @@ function rail(
   sessionId: string,
   groups: () => Promise<readonly AgentGroupView[]>,
   openFile: BoardRailProps['openFile'] = vi.fn(),
+  launch: BoardRailProps['launch'] = { groupId: undefined, template: undefined },
 ) {
   const state = listState(...summaries)
   const useSessions: BoardRailProps['useSessions'] = selector => selector(state)
@@ -75,6 +76,7 @@ function rail(
     <BoardRail
       sessionId={sid(sessionId)}
       useSessions={useSessions}
+      launch={launch}
       loadGroups={groups}
       openFile={openFile}
       t={t}
@@ -83,6 +85,30 @@ function rail(
 }
 
 describe('BoardRail', () => {
+  it('stays out of the templated home, which carries no Session concept', async () => {
+    const loadGroups = vi.fn(async () => [group(['session-root'], 'https://boards.example/qa')])
+    const view = rail([summary('session-root')], 'session-root', loadGroups, vi.fn(), {
+      groupId: undefined,
+      template: 'modellaunch',
+    })
+    await waitFor(() => { expect(view.container.firstChild).toBeNull() })
+    expect(loadGroups).not.toHaveBeenCalled()
+  })
+
+  it('still shows the board on a templated group link', async () => {
+    const view = rail(
+      [summary('session-root')],
+      'session-root',
+      () => Promise.resolve([group(['session-root'], 'https://boards.example/qa')]),
+      vi.fn(),
+      { groupId: 'custom:2', template: 'modellaunch' },
+    )
+    await waitFor(() => {
+      const src = view.container.querySelector('iframe')?.getAttribute('src')
+      expect(src?.startsWith('/agent-group-board?group=custom%3A2')).toBe(true)
+    })
+  })
+
   it('renders nothing while the group has no board URL', async () => {
     const view = rail([summary('session-root')], 'session-root', () => Promise.resolve([group(['session-root'])]))
     await waitFor(() => { expect(view.container.firstChild).toBeNull() })
