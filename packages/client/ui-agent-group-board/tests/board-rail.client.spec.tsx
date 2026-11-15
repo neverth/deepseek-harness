@@ -5,7 +5,7 @@
  * an agent-written board URL without a page reload.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { AgentGroupView } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -160,6 +160,58 @@ describe('BoardRail', () => {
     fireEvent.click(view.getByRole('button', { name: '展开看板' }))
     expect(view.container.querySelector('iframe')?.getAttribute('src'))
       .toBe('/agent-group-board?group=custom%3A2&_=1')
+  })
+
+  it('minimizes when the conversation column cannot keep the chat floor', async () => {
+    const host = document.createElement('div')
+    host.setAttribute('data-conversation-content', '')
+    Object.defineProperty(host, 'clientWidth', { configurable: true, value: 1100 })
+    document.body.append(host)
+    onTestFinished(() => { host.remove() })
+    const useSessions: BoardRailProps['useSessions'] = selector => selector(listState(summary('session-root')))
+    const view = render(
+      <BoardRail
+        sessionId={sid('session-root')}
+        useSessions={useSessions}
+        launch={{ groupId: undefined, template: undefined }}
+        loadGroups={() => Promise.resolve([group(['session-root'], 'http://127.0.0.1:8765/t/qa-1')])}
+        openFile={vi.fn()}
+        t={t}
+      />,
+      { container: host },
+    )
+
+    // 1100 - 720 leaves less than the 680px chat floor.
+    await waitFor(() => { expect(view.getByRole('button', { name: '展开看板' })).toBeTruthy() })
+    expect(view.container.querySelector('iframe')).toBeNull()
+
+    // An explicit expand wins until the column widens and narrows again.
+    fireEvent.click(view.getByRole('button', { name: '展开看板' }))
+    expect(view.container.querySelector('iframe')?.getAttribute('src'))
+      .toBe('/agent-group-board?group=custom%3A2&_=0')
+  })
+
+  it('keeps the column when the conversation still fits', async () => {
+    const host = document.createElement('div')
+    host.setAttribute('data-conversation-content', '')
+    Object.defineProperty(host, 'clientWidth', { configurable: true, value: 1600 })
+    document.body.append(host)
+    onTestFinished(() => { host.remove() })
+    const useSessions: BoardRailProps['useSessions'] = selector => selector(listState(summary('session-root')))
+    const view = render(
+      <BoardRail
+        sessionId={sid('session-root')}
+        useSessions={useSessions}
+        launch={{ groupId: undefined, template: undefined }}
+        loadGroups={() => Promise.resolve([group(['session-root'], 'http://127.0.0.1:8765/t/qa-1')])}
+        openFile={vi.fn()}
+        t={t}
+      />,
+      { container: host },
+    )
+
+    await waitFor(() => { expect(view.container.querySelector('iframe')).not.toBeNull() })
+    expect(view.queryByRole('button', { name: '展开看板' })).toBeNull()
   })
 
   it('opens a board file only for the sandboxed board iframe', async () => {

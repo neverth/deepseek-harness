@@ -11,7 +11,7 @@
  * @module @deepseek-ai/dsh-client-ui-agent-group-board/client/AgentGroupBoard
  */
 
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 'react'
 import type { AgentGroupView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -32,6 +32,8 @@ const WIDTH_KEY = 'dsh-agent-group-board-width-v1'
 const WIDTH_MIN = 320
 const WIDTH_MAX = 960
 const WIDTH_DEFAULT = 720
+/** Conversation width the board leaves before it minimizes itself. */
+const CHAT_MIN_WIDTH = 680
 
 /** Locale namespace owned by this plugin. */
 export const AGENT_GROUP_BOARD_NS = 'agentGroupBoard'
@@ -156,10 +158,34 @@ function BoardPanel({ group, root, openFile, t }: BoardPanelProps) {
   const [view, setView] = useState({ scale: 0.3, offset: 0, height: 2400 })
   const drag = useRef<DragState | null>(null)
   const viewport = useRef<HTMLDivElement | null>(null)
+  const panel = useRef<HTMLDivElement | null>(null)
   const frame = useRef<HTMLIFrameElement | null>(null)
   const openFileRef = useRef(openFile)
   openFileRef.current = openFile
+  const widthRef = useRef(width)
+  widthRef.current = width
+  const [columnWidth, setColumnWidth] = useState<number | undefined>(undefined)
+  // Minimize only when the conversation first loses its comfortable width;
+  // an explicit expand then stays until the column widens and narrows again.
+  const cramped = useRef(false)
   const boardSrc = `${BOARD_PATH}?group=${encodeURIComponent(group.id)}`
+
+  useLayoutEffect(() => {
+    const element = panel.current?.closest('[data-conversation-content]')
+    if (!(element instanceof HTMLElement)) return undefined
+    const measure = (): void => { setColumnWidth(element.clientWidth) }
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    measure()
+    return () => { observer.disconnect() }
+  }, [])
+
+  useLayoutEffect(() => {
+    if (columnWidth === undefined) return
+    const narrow = columnWidth - widthRef.current < CHAT_MIN_WIDTH
+    if (narrow && !cramped.current) setCollapsed(true)
+    cramped.current = narrow
+  }, [columnWidth])
 
   useEffect(() => {
     const element = viewport.current
@@ -192,19 +218,19 @@ function BoardPanel({ group, root, openFile, t }: BoardPanelProps) {
   }, [root])
 
   if (collapsed) {
+    // Minimized keeps no column: the restore tab floats over the transcript's
+    // left edge instead of reserving a vertical strip.
     return (
-      <div className={css.rail} data-collapsed="">
-        <div className={css.collapsed}>
-          <button
-            type="button"
-            className={css.button}
-            title={t('action.expand')}
-            aria-label={t('action.expand')}
-            onClick={() => { setCollapsed(false) }}
-          >
-            ›
-          </button>
-        </div>
+      <div className={css.dock} ref={panel} data-collapsed="">
+        <button
+          type="button"
+          className={css.restore}
+          title={t('action.expand')}
+          aria-label={t('action.expand')}
+          onClick={() => { setCollapsed(false) }}
+        >
+          ›
+        </button>
       </div>
     )
   }
@@ -233,7 +259,7 @@ function BoardPanel({ group, root, openFile, t }: BoardPanelProps) {
   }
 
   return (
-    <div className={css.rail} style={{ width: `${width}px` }}>
+    <div className={css.rail} ref={panel} style={{ width: `${width}px` }}>
       <div
         className={css.resize}
         title={t('rail.resize')}
