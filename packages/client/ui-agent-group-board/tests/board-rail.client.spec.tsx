@@ -63,6 +63,18 @@ function group(sessionIds: string[], boardUrl?: string): AgentGroupView {
   }
 }
 
+/** Conversation-row stand-in: the rail host whose parent carries the row width. */
+function railRow(width: number): HTMLElement {
+  const row = document.createElement('div')
+  Object.defineProperty(row, 'clientWidth', { configurable: true, value: width })
+  const railHost = document.createElement('div')
+  railHost.setAttribute('data-conversation-left-rail', '')
+  row.append(railHost)
+  document.body.append(row)
+  onTestFinished(() => { row.remove() })
+  return railHost
+}
+
 function rail(
   summaries: SessionSummary[],
   sessionId: string,
@@ -163,11 +175,7 @@ describe('BoardRail', () => {
   })
 
   it('minimizes when the conversation column cannot keep the chat floor', async () => {
-    const host = document.createElement('div')
-    host.setAttribute('data-conversation-content', '')
-    Object.defineProperty(host, 'clientWidth', { configurable: true, value: 1100 })
-    document.body.append(host)
-    onTestFinished(() => { host.remove() })
+    const host = railRow(1100)
     const useSessions: BoardRailProps['useSessions'] = selector => selector(listState(summary('session-root')))
     const view = render(
       <BoardRail
@@ -192,11 +200,7 @@ describe('BoardRail', () => {
   })
 
   it('keeps the column when the conversation still fits', async () => {
-    const host = document.createElement('div')
-    host.setAttribute('data-conversation-content', '')
-    Object.defineProperty(host, 'clientWidth', { configurable: true, value: 1600 })
-    document.body.append(host)
-    onTestFinished(() => { host.remove() })
+    const host = railRow(1600)
     const useSessions: BoardRailProps['useSessions'] = selector => selector(listState(summary('session-root')))
     const view = render(
       <BoardRail

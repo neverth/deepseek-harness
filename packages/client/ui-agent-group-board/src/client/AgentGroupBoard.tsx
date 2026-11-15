@@ -171,11 +171,14 @@ function BoardPanel({ group, root, openFile, t }: BoardPanelProps) {
   const boardSrc = `${BOARD_PATH}?group=${encodeURIComponent(group.id)}`
 
   useLayoutEffect(() => {
-    const element = panel.current?.closest('[data-conversation-content]')
-    if (!(element instanceof HTMLElement)) return undefined
-    const measure = (): void => { setColumnWidth(element.clientWidth) }
+    // The rail and the chat share the conversation row; its width stays put
+    // when the board opens or closes, so expanding never re-triggers the rule.
+    const rail = panel.current?.closest('[data-conversation-left-rail]')
+    const row = rail?.parentElement
+    if (!(row instanceof HTMLElement)) return undefined
+    const measure = (): void => { setColumnWidth(row.clientWidth) }
     const observer = new ResizeObserver(measure)
-    observer.observe(element)
+    observer.observe(row)
     measure()
     return () => { observer.disconnect() }
   }, [])
