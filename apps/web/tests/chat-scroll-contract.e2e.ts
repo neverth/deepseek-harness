@@ -1283,6 +1283,129 @@ describe('web e2e: long Chat scroll contract', () => {
     })
   })
 
+  it.skipIf(MODE === 'record')('keeps wide Markdown tables within the conversation column', async () => {
+    const columns = Array.from({ length: 8 }, (_, index) => `Column ${String(index + 1)}`)
+    const table = [
+      `| ${columns.join(' | ')} |`,
+      `| ${columns.map(() => '---').join(' | ')} |`,
+      `| ${columns.map(column => `${column} ${'long table content '.repeat(6)}`).join(' | ')} |`,
+    ].join('\n')
+    const fixture = (turns: number, markerPrefix: string): ChatScrollFixture => {
+      const base = createChatScrollFixture({ markerPrefix, title: `CHAT_TABLE_${markerPrefix}`, turns })
+      const parsed = parseSeedFixture(base.log)
+      const events = parsed.events.map(event => event.type === 'assistant/message' ? {
+        ...event,
+        data: {
+          ...event.data,
+          message: createAssistantMessage({
+            source: { provider: event.data.message.source.provider, model: event.data.message.source.model },
+            content: [{
+              type: 'text',
+              text: `${base.markers.assistant(event.data.turn)}\n\n${table}\n\n`
+                + `1. Nested table\n\n   ${table.replaceAll('\n', '\n   ')}`,
+            }],
+          }),
+        },
+      } : event)
+      return { ...base, log: [JSON.stringify(parsed.header), ...events.map(event => JSON.stringify(event)), ''].join('\n') }
+    }
+    const multiple = fixture(2, 'TABLE_OUTLINE')
+    const single = fixture(1, 'TABLE_SINGLE')
+    await withScrollWorld({
+      failureShot: 'web-e2e-chat-table-outline',
+      seeds: [
+        { fixture: multiple, id: 'chat-table-outline-e2e' },
+        { fixture: single, id: 'chat-table-single-e2e' },
+      ],
+    }, async (world) => {
+      const page = world.page
+      await page.setViewportSize({ width: 1780, height: 900 })
+      await openSeed(page, multiple, multiple.markers.assistant(2))
+      const rail = page.getByRole('navigation', { name: 'Turn navigation', exact: true })
+      const host = page.locator('[data-conversation-scroll]')
+      const wrappers = page.locator('.md-table-wide')
+      await expect.poll(() => wrappers.count()).toBe(4)
+      await rail.waitFor({ state: 'visible' })
+      const geometry = () => host.evaluate((element) => {
+        const outline = element.querySelector('nav[aria-label="Turn navigation"]')!.getBoundingClientRect()
+        const tables = [...element.querySelectorAll<HTMLElement>('.md-table-wide')]
+        return {
+          gap: Math.min(...tables.map(node => outline.left - node.getBoundingClientRect().right)),
+          overflowing: tables.every(node => node.scrollWidth > node.clientWidth),
+          columnOverflow: Math.max(...tables.map(node =>
+            node.getBoundingClientRect().right - node.closest('[data-chat-flow-kind]')!.getBoundingClientRect().right)),
+          outerOverflow: element.scrollWidth - element.clientWidth,
+          pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+          starts: tables.map(node => node.querySelector('table')!.getBoundingClientRect().left),
+          widths: tables.map(node => node.clientWidth),
+          outlineRight: outline.right,
+        }
+      })
+      const expectClear = async (): Promise<void> => {
+        await expect.poll(async () => (await geometry()).gap).toBeGreaterThanOrEqual(8 - GEOMETRY_TOLERANCE)
+        const boxes = await geometry()
+        expect(boxes.overflowing).toBe(true)
+        expect(boxes.columnOverflow).toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
+        expect(boxes.outerOverflow).toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
+        expect(boxes.pageOverflow).toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
+      }
+      await expectClear()
+      const initial = await geometry()
+      const resize = async (delta: number, width: number): Promise<void> => {
+        const handle = await rail.locator('[role="presentation"]').boundingBox()
+        expect(handle).not.toBeNull()
+        await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2)
+        await page.mouse.down()
+        try {
+          await page.mouse.move(handle!.x + handle!.width / 2 + delta, handle!.y + handle!.height / 2, { steps: 8 })
+        } finally {
+          await page.mouse.up()
+        }
+        await expect.poll(async () => (await rail.boundingBox())?.width).toBe(width)
+        await expectClear()
+        const resized = await geometry()
+        expect(resized.widths).toEqual(initial.widths)
+        expect(Math.abs(resized.outlineRight - initial.outlineRight)).toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
+        for (const [index, start] of resized.starts.entries()) {
+          expect(Math.abs(start - initial.starts[index]!)).toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
+        }
+      }
+      await resize(-80, 240)
+      await resize(100, 140)
+
+      const lastTable = wrappers.last()
+      await lastTable.scrollIntoViewIfNeeded()
+      const tableBox = await lastTable.boundingBox()
+      const outerTop = await host.evaluate(element => element.scrollTop)
+      await page.mouse.move(tableBox!.x + tableBox!.width / 2, tableBox!.y + tableBox!.height / 2)
+      await page.mouse.wheel(600, 0)
+      await expect.poll(() => lastTable.evaluate(element => element.scrollLeft)).toBeGreaterThan(0)
+      expect(Math.abs(await host.evaluate(element => element.scrollTop) - outerTop)).toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
+      await expectClear()
+
+      await page.setViewportSize({ width: 1100, height: 900 })
+      await expect.poll(() => rail.isVisible()).toBe(false)
+      expect(await wrappers.first().evaluate(element =>
+        element.getBoundingClientRect().right - element.closest('[data-chat-flow-kind]')!.getBoundingClientRect().right))
+        .toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
+      await page.setViewportSize({ width: 1780, height: 900 })
+      await rail.waitFor({ state: 'visible' })
+      await expectClear()
+      expect((await geometry()).widths).toEqual(initial.widths)
+      await openSeed(page, single, single.markers.assistant(1))
+      expect(await page.getByRole('navigation', { name: 'Turn navigation', exact: true }).count()).toBe(0)
+      expect(await wrappers.first().evaluate(element =>
+        element.getBoundingClientRect().right - element.closest('[data-chat-flow-kind]')!.getBoundingClientRect().right))
+        .toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
+      await page.setViewportSize({ width: 390, height: 844 })
+      await nextPaint(page)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
+      expect(await host.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(GEOMETRY_TOLERANCE)
+      expect(await wrappers.first().evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true)
+      assertClean(world)
+    })
+  })
+
   it.skipIf(MODE === 'record')('keeps floating controls anchored outside the clipped transcript', async () => {
     await withScrollWorld({
       failureShot: 'web-e2e-chat-floating-controls',
