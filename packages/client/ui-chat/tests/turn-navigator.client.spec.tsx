@@ -34,7 +34,7 @@ function domRect(right: number): DOMRect {
   return {
     x: 0, y: 0, width: right, height: 100, top: 0, right, bottom: 100, left: 0,
     toJSON: () => ({}),
-  } as DOMRect
+  }
 }
 
 /** Records every observer so a case can fire the measurement after mounting. */

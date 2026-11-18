@@ -60,7 +60,12 @@
   transition: opacity 140ms ease;
 }
 
-.handle:hover::before,
+@media (hover: hover) {
+  .handle:hover::before {
+    opacity: 1;
+  }
+}
+
 .frameDragging .handle::before {
   opacity: 1;
 }
@@ -110,10 +115,12 @@
   transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease;
 }
 
-.row:hover {
-  border-left-color: var(--dsw-alias-border-l4);
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
+@media (hover: hover) {
+  .row:hover {
+    border-left-color: var(--dsw-alias-border-l4);
+    background: var(--dsw-alias-bg-layer-1);
+    color: var(--dsw-alias-label-primary);
+  }
 }
 
 /* Ordered before the active state so that keeps its stronger treatment. */
@@ -133,7 +140,7 @@
 }
 
 .row:focus-visible {
-  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline: 1px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -1px;
 }
 
@@ -156,7 +163,7 @@
   max-height: var(--turn-preview-height);
   overflow: hidden;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-md);
   color: var(--dsw-alias-label-primary);
   /* Clearly translucent over the transcript: the card overlays running text,
      so the paragraph beneath reads through it. `color-mix` keeps the theme's

@@ -36,6 +36,9 @@ export const remoteDefaultResponses: RemoteTable = {
     'web/listProviders': ok({ search: [], fetch: [] }),
     // ui-permission-presets `PermissionCatalogDirectory` on its first read for a connection generation.
     'permissionPresets/catalog': ok({ options: [] }),
+    // The ui-settings-models onboarding dialog loads the provider directories.
+    'llm/listProviders': ok([]),
+    'llm/listConfigurableProviders': ok([]),
     // ui-settings-account refreshes details after a stored-grant snapshot.
     'account/getProfile': ok(null),
     'account/getBalance': ok(null),

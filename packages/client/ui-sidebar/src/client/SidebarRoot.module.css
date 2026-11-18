@@ -847,7 +847,7 @@
   padding: 0 2px;
   overflow: hidden;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-button-floating-fill);
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
@@ -855,18 +855,20 @@
   cursor: pointer;
 }
 
-.deployment:hover:not([data-current]) {
-  background: var(--dsw-alias-button-floating-hover);
-  color: var(--dsw-alias-label-primary);
+@media (hover: hover) {
+  .deployment:hover:not([data-current]) {
+    background: var(--dsw-alias-button-floating-hover);
+    color: var(--dsw-alias-label-primary);
+  }
 }
 
 /* The deployment already serving this page reads as selected, not clickable. */
 .deployment[data-current] {
   background: var(--dsw-alias-button-info-fill);
   border-color: transparent;
-  /* Static white, matching the composer's send circle: the label stays white
-     on the blue fill in both themes. */
-  color: #fff;
+  /* The on-color alias matches the composer's send circle: the label stays
+     white on the blue fill in both themes. */
+  color: var(--dsw-alias-label-on-color);
   cursor: default;
 }
 

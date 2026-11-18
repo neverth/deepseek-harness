@@ -54,7 +54,11 @@ function bench(ids: readonly SessionId[], limit = 10) {
   const setOnRetain = (hook: () => void): void => { onRetain = hook }
   const setStatus = (id: SessionId, patch: Partial<SessionStatus>): void => {
     const next = new Map(status.getSnapshot())
-    next.set(id, { running: false, pendingInteraction: undefined, completionUnread: false, completionPendingAck: false, completionFailed: false, ...patch })
+    next.set(id, {
+      running: false, pendingInteraction: undefined,
+      completionUnread: false, completionPendingAck: false, completionFailed: false,
+      ...patch,
+    })
     status.set(next)
   }
   /** Show each Session in the main view in turn, then show `last`. */

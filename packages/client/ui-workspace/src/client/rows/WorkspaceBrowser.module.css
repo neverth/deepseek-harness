@@ -659,8 +659,10 @@
   cursor: pointer;
 }
 
-.groupPickerOption:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .groupPickerOption:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 /* The current group keeps the same row shape; only the glyph and name tint it. */

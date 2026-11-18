@@ -18,8 +18,10 @@
   cursor: pointer;
 }
 
-.regenerate:hover:not(:disabled) {
-  background-color: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .regenerate:hover:not(:disabled) {
+    background-color: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 .regenerate:disabled {

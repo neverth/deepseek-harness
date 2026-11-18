@@ -6,7 +6,7 @@
  * client can observe. The dialog lives outside the row menu because the row
  * unmounts with the menu.
  */
-import { IconFolderCloseRegular, IconFolderOpenRegular, MenuItemButton, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconFolderCloseRegular, IconFolderOpenRegular, MenuItemButton, MenuSurface, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import clsx from 'clsx'
 import type {
   GroupPickerProps, MoveToGroupInjected, SessionMenuItemProps,
@@ -60,7 +60,7 @@ export function GroupPickerDialog({ useMoveRequest, settleMoveToGroup, moveSessi
       {groups.length === 0
         ? <div className={css.groupPickerEmpty}>{t('group.picker.empty')}</div>
         : (
-          <div className={css.groupPickerList} role="listbox" aria-label={t('group.picker.title')}>
+          <MenuSurface className={css.groupPickerList} role="listbox" aria-label={t('group.picker.title')}>
             {groups.map(group => (
               <button
                 key={group.id}
@@ -92,7 +92,7 @@ export function GroupPickerDialog({ useMoveRequest, settleMoveToGroup, moveSessi
                 <span className={css.groupPickerName}>{t('group.removeFrom')}</span>
               </button>
             )}
-          </div>
+          </MenuSurface>
         )}
     </Modal>
   )

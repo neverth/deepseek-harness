@@ -199,10 +199,18 @@ export function AppFrame({
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
   const normal = computeColumns(
-    viewport, !layoutInfo.rightbarShown && narrow ? 0 : effectiveSidebarPreference, rightbarPreference, effectiveCollapsedWidth, centeredSidebar,
+    viewport,
+    !layoutInfo.rightbarShown && narrow ? 0 : effectiveSidebarPreference,
+    rightbarPreference,
+    effectiveCollapsedWidth,
+    centeredSidebar,
   )
   const cols = computeColumns(
-    viewport, shared || drawer ? 0 : effectiveSidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, effectiveCollapsedWidth, centeredSidebar,
+    viewport,
+    shared || drawer ? 0 : effectiveSidebarPreference,
+    layoutInfo.rightbarTrack ? rightbarPreference : 0,
+    effectiveCollapsedWidth,
+    centeredSidebar,
   )
   const colsRef = useRef(cols)
   colsRef.current = cols

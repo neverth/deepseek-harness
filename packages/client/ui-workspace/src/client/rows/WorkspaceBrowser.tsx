@@ -1153,7 +1153,7 @@ function CustomGroupTree({
               }
               return
             }
-            setDrag(active => {
+            setDrag((active) => {
               if (active === null) return active
               if (orderBy !== 'manual' && active.from === section.key) return { ...active, over: null }
               return { ...active, over: { key: section.key, id: null, half: 'after' } }
@@ -1235,7 +1235,7 @@ function CustomGroupTree({
                       })
                     },
                     drop: (half) => {
-                      if (!accepts || drag === null) return
+                      if (!accepts) return
                       commit(drag, orderBy === 'manual'
                         ? { key: section.key, id: node.id, half: node.blank ? 'after' : half }
                         : { key: section.key, id: null, half: 'after' })

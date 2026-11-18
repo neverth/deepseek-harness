@@ -465,10 +465,12 @@ function diagnoseJsonLoss(value: unknown): string {
   const describe = (current: unknown): string => {
     if (current === null) return 'null'
     if (Array.isArray(current)) return `array(${String(current.length)})`
+    // oxlint-disable-next-line typescript/no-base-to-string -- Object values are handled below.
     if (typeof current !== 'object') return `${typeof current} ${String(current)}`
     const proto: unknown = Object.getPrototypeOf(current)
     if (proto === null) return 'null-prototype object'
     const name = (proto as { constructor?: { name?: string } }).constructor?.name
+    // oxlint-disable-next-line typescript/no-base-to-string -- An unnamed prototype's default text is part of this diagnostic.
     return `object prototype=${name ?? String(proto)} keys=${Reflect.ownKeys(current).map(String).join(',').slice(0, 80)}`
   }
   const walk = (current: unknown, path: string, depth: number): string | undefined => {

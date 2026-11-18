@@ -923,7 +923,9 @@ describe('WorkspaceBrowser', () => {
     })
     const status = (id: string, value: Partial<SessionStatus>) =>
       hook<SessionStatusSnapshot>(new Map([[sid(id), {
-        running: false, pendingInteraction: undefined, completionUnread: false, completionPendingAck: false, completionFailed: false, ...value,
+        running: false, pendingInteraction: undefined,
+        completionUnread: false, completionPendingAck: false, completionFailed: false,
+        ...value,
       }]]))
     const expectVisible = (count: number) => {
       expect(screen.getAllByRole('treeitem').map(row => within(row).getByText(/^(alpha|session-\d+)$/u).textContent))

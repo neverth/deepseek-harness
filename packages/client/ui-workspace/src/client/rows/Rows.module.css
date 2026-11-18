@@ -334,9 +334,14 @@
   background: currentColor;
 }
 
-.ackDot:hover::before,
+@media (hover: hover) {
+  .ackDot:hover::before {
+    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent);
+  }
+}
+
 .ackDot:focus-visible::before {
-  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent);
+  box-shadow: 0 0 0 3px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
 }
 
 /* Trailing action buttons surface on hover with bare 16px glyphs. */
